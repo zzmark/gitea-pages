@@ -293,14 +293,6 @@ func oauthConfigFromAppConfig(config *Config) *OAuthConfig {
 }
 
 func main() {
-	if handled, err := runSecurityMigrationCommand(os.Args[1:]); handled {
-		if err != nil {
-			log.Printf("Security migration command failed: %v", err)
-			os.Exit(1)
-		}
-		return
-	}
-
 	config, err := LoadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
@@ -313,7 +305,7 @@ func main() {
 	}
 
 	// Webhooks are enabled only after encrypted token and per-hook credential
-	// storage exists. There is no runtime shared-secret fallback after migration.
+	// storage exists. There is no runtime shared-secret fallback.
 	giteaPublicURL := config.GiteaPublicURL
 	if giteaPublicURL == "" {
 		giteaPublicURL = config.GiteaAPIURL

@@ -45,34 +45,12 @@ supersedes the early prototype design.
 - Do not add global webhook secrets, payload-selected OAuth tokens, shared
   administrator access tokens, or any fallback HTTP authentication path.
 
-## Offline migration and rollback
+## Unsupported legacy credentials
 
-Existing installations using the historical shared webhook secret must run the
-**offline migration** before starting the hardened runtime:
-
-```bash
-deployer migrate-security \
-  --backup /secure/backups/tokens.db.before-security-migration \
-  --manifest /secure/backups/legacy-hooks.manifest
-```
-
-Stop Deployer but leave Nginx serving the last published static content. The
-migration requires `TOKEN_ENCRYPTION_KEY_FILE`, `LEGACY_WEBHOOK_SECRET_FILE`,
-`GITEA_API_URL`, and `WEBHOOK_PUBLIC_URL`; it encrypts legacy OAuth rows and
-rotates every reachable hook to its scoped credential. The backup must already
-exist and have mode `0600`; the encrypted manifest also has mode `0600` and is
-retained only for the rollback window.
-
-To roll back, stop the new Deployer, restore external hooks using the manifest,
-restore the v1 database backup, and start the recorded old image digest:
-
-```bash
-deployer restore-legacy-hooks \
-  --manifest /secure/backups/legacy-hooks.manifest
-```
-
-After the rollback window expires, remove the legacy secret file from the host.
-The normal HTTP handler must never accept that old shared secret.
+The runtime accepts only encrypted OAuth grants and per-hook credentials.
+Installations using the historical plaintext token database or shared webhook
+secret must start with a fresh Deployer data volume and complete OAuth again.
+The normal HTTP handler never accepts the retired shared secret.
 
 ## Release requirements
 
@@ -83,8 +61,7 @@ configuration/image scans. Do not invoke the historical top-level `tests/`
 directory as a Go module; its executable tests are shell policy checks, while
 the Go module and end-to-end regression suite live in `deployer/`.
 
-Before a production migration, record image digests, `0600` backup location,
-hook counts before and after migration, successful delivery IDs, and rollback
-window expiry. Keep forensic logs for suspected token compromise, forged-hook
+Before a production release, record image digests and successful delivery IDs.
+Keep forensic logs for suspected token compromise, forged-hook
 attempts, deployment timeouts, or disk exhaustion; preserve existing sites by
 stopping Deployer before any cleanup.

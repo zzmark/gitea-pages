@@ -40,11 +40,6 @@ func NewTokenCipher(key []byte) (*TokenCipher, error) {
 	return &TokenCipher{aead: aead}, nil
 }
 
-// Seal encrypts plaintext with a randomly generated nonce.
-func (c *TokenCipher) Seal(plaintext []byte) ([]byte, error) {
-	return c.seal(plaintext, []byte(tokenCipherAssociatedData))
-}
-
 // SealToken encrypts an OAuth token and binds it to its normalized owner and
 // database field. This prevents a valid ciphertext from being substituted for
 // another user's token or for the refresh-token column.
@@ -62,11 +57,6 @@ func (c *TokenCipher) seal(plaintext, associatedData []byte) ([]byte, error) {
 		return nil, err
 	}
 	return append(nonce, c.aead.Seal(nil, nonce, plaintext, associatedData)...), nil
-}
-
-// Open authenticates and decrypts a token ciphertext.
-func (c *TokenCipher) Open(sealed []byte) ([]byte, error) {
-	return c.open(sealed, []byte(tokenCipherAssociatedData))
 }
 
 // OpenToken authenticates and decrypts an OAuth token bound to its normalized

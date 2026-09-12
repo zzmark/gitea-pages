@@ -109,52 +109,6 @@ it to `false` only when an installation intentionally serves personal scopes.
 
 With OAuth2 authorization, private repositories are automatically supported. The deployer uses the user's OAuth token to clone private repos when deploying their sites.
 
-### Offline security credential migration
-
-The offline migration command, `migrate-security`, encrypts legacy OAuth
-tokens and replaces the shared webhook secret with one credential per Gitea
-hook. It uses existing OAuth grants (and the retained organization-authorizer
-pool) so users do not need to authorize again unless Gitea rejects the actual
-token, scope, administrator permission, or a manually-created hook. Stop the
-Deployer before running either maintenance command; Nginx can keep serving the
-already-published static files.
-
-The migration requires `TOKEN_ENCRYPTION_KEY_FILE`,
-`LEGACY_WEBHOOK_SECRET_FILE`, `GITEA_API_URL`, and `WEBHOOK_PUBLIC_URL`. Create
-the database backup yourself first, protect it with `0600`, and choose a new
-manifest filename. The command refuses to run without those guards:
-
-```bash
-deployer migrate-security \
-  --backup /secure/backups/tokens.db.before-security-migration \
-  --manifest /secure/backups/legacy-hooks.manifest
-```
-
-The manifest is AES-GCM encrypted and mode `0600`; retain it only for the
-rollback window. A named organization reported with “requires manual
-reauthorization” was skipped only when
-`--skip-failed-organizations` was explicitly supplied.
-
-Production sequence:
-
-1. Back up Pages data and `tokens.db`; record old image digests.
-2. Stop only Deployer; keep Nginx serving existing static files.
-3. Run the new image with `migrate-security` and secret files mounted.
-4. Verify encrypted rows, per-hook row counts, and Gitea hook delivery tests.
-5. Start the new Deployer and send one personal plus one organization test delivery.
-6. Remove the legacy secret file from the host after the rollback window.
-7. For rollback, stop new Deployer, run `restore-legacy-hooks`, restore the v1 database backup, and start the pinned old image.
-
-To restore Gitea before restoring the database backup, mount the same
-encryption key and legacy webhook secret files and run:
-
-```bash
-deployer restore-legacy-hooks --manifest /secure/backups/legacy-hooks.manifest
-```
-
-The restore command attempts every recorded hook and exits non-zero unless all
-of them are restored.
-
 #### Create Your Site
 
 **Root Site (username.pages.domain.com):**

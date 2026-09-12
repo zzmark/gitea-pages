@@ -75,14 +75,13 @@ for text in \
     'Suspected token compromise' \
     'Forged-hook response' \
     'Disk-exhaustion response' \
-    'Rollback procedure'; do
+    'Unsupported legacy credentials'; do
     require_text "$security_doc" "$text"
 done
 
-require_text README.md 'offline migration'
 require_text README.md 'ENABLE_ORGANIZATION_HOOKS=true'
 require_text README.md 'administrator token pool'
-require_text AI.md 'offline migration'
+require_text AI.md 'Unsupported legacy credentials'
 require_text AI.md 'ENABLE_ORGANIZATION_HOOKS=true'
 require_text AI.md 'administrator token pool'
 user_facing_paths=(README.md AI.md docs/security.md .env.example examples)

@@ -164,43 +164,8 @@ func TestVerifyOrganizationHookUsesValidAuthorizedAdministratorWhenPrincipalToke
 	}
 }
 
-// This test fails if an upgraded organization hook with no retained principal
-// username is rejected before its persistent administrator pool is consulted.
-func TestVerifyOrganizationHookUsesAuthorizedAdministratorWhenLegacyPrincipalIsEmpty(t *testing.T) {
-	var receivedAuthorization string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedAuthorization = r.Header.Get("Authorization")
-		repo := RepoInfo{ID: 7, Name: "site", FullName: "platform/site", CloneURL: serverCloneURL(r)}
-		repo.Owner.Username = "platform"
-		_ = json.NewEncoder(w).Encode(repo)
-	}))
-	defer server.Close()
-
-	store := newTestTokenStore(t)
-	t.Cleanup(func() { _ = store.Close() })
-	store.Set("alice", &UserToken{AccessToken: "administrator-token"})
-	if err := store.PutOrganizationHookAuthorizer(context.Background(), "platform", "alice", "platform-hook"); err != nil {
-		t.Fatalf("save organization administrator: %v", err)
-	}
-	verifier, err := NewRepositoryVerifier(server.URL, store)
-	if err != nil {
-		t.Fatalf("new verifier: %v", err)
-	}
-
-	verified, err := verifier.Verify(context.Background(), HookPrincipal{ScopeType: ScopeOrganization, ScopeName: "platform"}, PayloadRepository{ID: 7, Name: "site", OwnerUsername: "platform"})
-	if err != nil {
-		t.Fatalf("verify repository: %v", err)
-	}
-	if got, want := receivedAuthorization, "Bearer administrator-token"; got != want {
-		t.Errorf("repository lookup authorization = %q, want %q", got, want)
-	}
-	if got, want := verified.AccessToken, "administrator-token"; got != want {
-		t.Errorf("verified repository access token = %q, want %q", got, want)
-	}
-}
-
-// This test fails if a legacy organization-authorizer row cannot be found
-// after Gitea changes only the casing of its organization username.
+// Organization authorization remains stable when Gitea changes only the
+// casing of its organization username.
 func TestOrganizationHookAuthorizersMatchesOrganizationNameCaseInsensitively(t *testing.T) {
 	store := newTestTokenStore(t)
 	t.Cleanup(func() { _ = store.Close() })

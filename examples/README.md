@@ -10,9 +10,8 @@ the Compose networks and reads only file-mounted secrets. `DOMAIN` is the
 complete Pages domain; the OAuth callback and webhook target are
 `https://<DOMAIN>/oauth/callback` and `https://<DOMAIN>/webhook`.
 
-See the [hardened deployment guide](quickstart/README.md) for setup and
-offline-migration instructions, and use the root `tests/` scripts for
-repository validation.
+See the [hardened deployment guide](quickstart/README.md) for setup
+instructions, and use the root `tests/` scripts for repository validation.
 
 ---
 
@@ -24,5 +23,5 @@ repository validation.
 是完整 Pages 域名；OAuth 回调和 webhook 目标分别是
 `https://<DOMAIN>/oauth/callback` 与 `https://<DOMAIN>/webhook`。
 
-请参阅[安全部署指南](quickstart/README.md)了解配置和离线迁移，并使用根目录的
+请参阅[安全部署指南](quickstart/README.md)了解配置，并使用根目录的
 `tests/` 脚本验证仓库。

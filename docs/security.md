@@ -37,8 +37,8 @@ Rotate one scope at a time. Create a new per-hook key/secret pair, update the
 matching Gitea hook, persist the new encrypted credential, then send a signed
 delivery and confirm it reaches the intended site. Retire the old credential
 only after that delivery succeeds. Rotate OAuth client, session, and encryption
-secrets through a planned restart; preserve the existing encryption key until
-every token and rollback manifest that needs it has expired or been migrated.
+secrets through a planned restart; preserve the existing encryption key while
+any stored token still depends on it.
 Never put secrets in Compose environment variables, repository files, image
 layers, logs, or command-line arguments.
 
@@ -79,44 +79,17 @@ layers, logs, or command-line arguments.
    concurrency as needed, then verify free space and an atomic test deployment
    before restarting Deployer.
 
-## Offline migration and rollback
+## Unsupported legacy credentials
 
-Existing installations that used a shared webhook secret must complete the
-offline migration before starting the hardened image. The normal HTTP server
-does not accept the legacy shared secret. Back up the database to an existing
-`0600` file, stop only Deployer, and retain the old image digest and encrypted
-rollback manifest for the approved rollback window:
-
-```bash
-deployer migrate-security \
-  --backup /secure/backups/tokens.db.before-security-migration \
-  --manifest /secure/backups/legacy-hooks.manifest
-```
-
-The migration reads `TOKEN_ENCRYPTION_KEY_FILE`,
-`LEGACY_WEBHOOK_SECRET_FILE`, `GITEA_API_URL`, and `WEBHOOK_PUBLIC_URL` only
-while it runs. Nginx may continue to serve existing content. Verify encrypted
-rows, per-hook counts, and one personal plus (when enabled) one organization
-delivery before starting the new Deployer. Delete the legacy secret from the
-host only after the rollback window expires.
-
-## Rollback procedure
-
-1. Stop the new Deployer and preserve its logs, image digest, database, and the
-   migration manifest. Leave Nginx serving the last known good static content.
-2. Run `deployer restore-legacy-hooks --manifest
-   /secure/backups/legacy-hooks.manifest` with the same encryption key and
-   `LEGACY_WEBHOOK_SECRET_FILE`. The command must complete every recorded
-   Gitea hook restoration.
-3. Restore the v1 database backup, start the pinned old Deployer image, and
-   send a signed test delivery for each restored scope.
-4. Record the restored hook count, backup location, old and new image digests,
-   the incident decision, and the rollback-window expiry in the release ticket.
+The runtime has no compatibility path for the historical plaintext token
+database or shared webhook secret. Start with a fresh Deployer data volume and
+have users complete OAuth again so that encrypted grants and per-hook
+credentials are created. Preserve the published Pages directory separately if
+existing static content must remain available during that process.
 
 ## Release evidence
 
 Before release, run the Security release gate workflow and retain its logs.
-For the production change, record image digests, database backup locations,
-hook counts before and after migration, successful delivery IDs, and the
-rollback-window expiry. Do not run `git clean -fdx` as part of this process;
+For the production change, record image digests and successful delivery IDs.
+Do not run `git clean -fdx` as part of this process;
 `git clean -ndx` is preview-only.

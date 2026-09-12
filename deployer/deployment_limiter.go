@@ -100,9 +100,8 @@ func (l *DeploymentLimiter) releaseReference(target string, entry *deploymentTar
 	}
 }
 
-// DeploymentService applies resource limits around GitOperations. It is kept
-// independent from webhook authentication so legacy hooks can be migrated
-// without changing their authentication semantics.
+// DeploymentService applies resource limits around GitOperations and remains
+// independent from webhook authentication.
 type DeploymentService struct {
 	gitOps                 *GitOperations
 	limiter                *DeploymentLimiter

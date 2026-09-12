@@ -12,14 +12,14 @@ import (
 
 func TestTokenCipherDoesNotPersistPlaintext(t *testing.T) {
 	cipher := mustTokenCipher(t, bytes.Repeat([]byte{1}, 32))
-	sealed, err := cipher.Seal([]byte("access-secret"))
+	sealed, err := cipher.SealToken("alice", tokenFieldAccess, []byte("access-secret"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Contains(sealed, []byte("access-secret")) {
 		t.Fatal("ciphertext contains plaintext")
 	}
-	plain, err := cipher.Open(sealed)
+	plain, err := cipher.OpenToken("alice", tokenFieldAccess, sealed)
 	if err != nil || string(plain) != "access-secret" {
 		t.Fatalf("round trip failed: %v", err)
 	}
@@ -27,14 +27,14 @@ func TestTokenCipherDoesNotPersistPlaintext(t *testing.T) {
 
 func TestTokenCipherReturnsDecryptErrorForTamperedCiphertext(t *testing.T) {
 	cipher := mustTokenCipher(t, bytes.Repeat([]byte{1}, 32))
-	sealed, err := cipher.Seal([]byte("access-secret"))
+	sealed, err := cipher.SealToken("alice", tokenFieldAccess, []byte("access-secret"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	sealed[len(sealed)-1] ^= 1
 
-	if _, err := cipher.Open(sealed); !errors.Is(err, ErrTokenDecrypt) {
-		t.Fatalf("Open() error = %v, want ErrTokenDecrypt", err)
+	if _, err := cipher.OpenToken("alice", tokenFieldAccess, sealed); !errors.Is(err, ErrTokenDecrypt) {
+		t.Fatalf("OpenToken() error = %v, want ErrTokenDecrypt", err)
 	}
 }
 
@@ -161,8 +161,8 @@ func TestTokenStoreRefusesPlaintextTokenRows(t *testing.T) {
 		_ = store.Close()
 		t.Fatal("NewTokenStore accepted plaintext token rows")
 	}
-	if !strings.Contains(err.Error(), "Task 10") {
-		t.Fatalf("NewTokenStore() error = %q, want Task 10 migration instruction", err)
+	if !strings.Contains(err.Error(), "authorize users again") {
+		t.Fatalf("NewTokenStore() error = %q, want clean-start instruction", err)
 	}
 
 	check, err := sql.Open("sqlite", filepath.Join(dataDir, "tokens.db"))
@@ -170,12 +170,12 @@ func TestTokenStoreRefusesPlaintextTokenRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer check.Close()
-	var migratedTable int
-	if err := check.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'user_tokens_v2')`).Scan(&migratedTable); err != nil {
+	var secureTable int
+	if err := check.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'user_tokens_v2')`).Scan(&secureTable); err != nil {
 		t.Fatal(err)
 	}
-	if migratedTable != 0 {
-		t.Fatal("legacy-token refusal committed a partial schema migration")
+	if secureTable != 0 {
+		t.Fatal("plaintext-token refusal committed a partial secure schema")
 	}
 }
 
@@ -219,60 +219,6 @@ func TestTokenStoreSetReturnsPersistenceFailureWithoutUpdatingMemory(t *testing.
 	}
 	if got := store.Get("alice"); got != nil {
 		t.Fatalf("Set() changed memory after persistence failure: %#v", got)
-	}
-}
-
-func TestTokenStoreRekeysLegacyV2TokensForBoundAuthentication(t *testing.T) {
-	dataDir := t.TempDir()
-	key := bytes.Repeat([]byte{5}, 32)
-	cipher := mustTokenCipher(t, key)
-	legacyAccess, err := cipher.Seal([]byte("legacy-access"))
-	if err != nil {
-		t.Fatalf("seal legacy access token: %v", err)
-	}
-	legacyRefresh, err := cipher.Seal([]byte("legacy-refresh"))
-	if err != nil {
-		t.Fatalf("seal legacy refresh token: %v", err)
-	}
-	db, err := sql.Open("sqlite", filepath.Join(dataDir, "tokens.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = db.Exec(`CREATE TABLE user_tokens_v2 (
-		username TEXT PRIMARY KEY,
-		access_token_ciphertext BLOB NOT NULL,
-		refresh_token_ciphertext BLOB,
-		token_type TEXT,
-		expires_at DATETIME,
-		created_at DATETIME NOT NULL
-	); INSERT INTO user_tokens_v2 (username, access_token_ciphertext, refresh_token_ciphertext, token_type, created_at) VALUES (?, ?, ?, '', CURRENT_TIMESTAMP)`, "alice", legacyAccess, legacyRefresh)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	store, err := NewTokenStore(dataDir, key)
-	if err != nil {
-		t.Fatalf("NewTokenStore() error = %v", err)
-	}
-	defer store.Close()
-	if got := store.Get("alice"); got == nil || got.AccessToken != "legacy-access" || got.RefreshToken != "legacy-refresh" {
-		t.Fatalf("legacy token = %#v", got)
-	}
-
-	check, err := sql.Open("sqlite", filepath.Join(dataDir, "tokens.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer check.Close()
-	var version int
-	if err := check.QueryRow(`SELECT encryption_version FROM user_tokens_v2 WHERE username = 'alice'`).Scan(&version); err != nil {
-		t.Fatal(err)
-	}
-	if version != tokenCipherAADVersion {
-		t.Fatalf("encryption_version = %d, want %d", version, tokenCipherAADVersion)
 	}
 }
 

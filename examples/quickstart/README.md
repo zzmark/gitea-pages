@@ -21,10 +21,10 @@ secret files.
 5. Keep `ENABLE_ORGANIZATION_HOOKS=true` for the approved automatic
    organization-hook flow backed by the administrator token pool.
 
-Existing installations using historical global hook credentials must complete
-the offline migration before starting the hardened stack. Follow
-[`docs/security.md`](../../docs/security.md) for the migration, rollback, and
-incident-response procedures.
+Historical plaintext token databases and shared webhook credentials are not
+supported. Start with a fresh Deployer data volume and complete OAuth again.
+See [`docs/security.md`](../../docs/security.md) for security and incident
+response procedures.
 
 ---
 
@@ -46,6 +46,6 @@ Nginx；`DOMAIN` 是完整 Pages 域名，公开 OAuth 回调和 webhook 端点�
 5. 保持 `ENABLE_ORGANIZATION_HOOKS=true`，以使用管理员 token 池支持的自动组织
    hook 流程。
 
-使用历史全局 hook 凭据的现有安装必须先完成离线迁移，之后才能启动加固后的
-服务。迁移、回滚和事件响应请参见
+历史明文 token 数据库和共享 webhook 凭据不再受支持。请使用新的 Deployer
+数据卷启动，并让用户重新完成 OAuth。安全与事件响应流程请参见
 [`docs/security.md`](../../docs/security.md)。

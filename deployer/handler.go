@@ -25,7 +25,7 @@ type Deployer struct {
 	deployments        DeploymentExecutor
 }
 
-// NewWebhookDeployer constructs the post-migration webhook handler. Its
+// NewWebhookDeployer constructs the webhook handler. Its
 // dependencies are deliberately injected after secure storage is initialized.
 func NewWebhookDeployer(config *Config, hookStore HookStore, verifier RepositoryVerifier, deployments DeploymentExecutor) *Deployer {
 	return &Deployer{
