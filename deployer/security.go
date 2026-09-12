@@ -110,14 +110,9 @@ func ShouldRejectFile(path string, info os.FileInfo) bool {
 		return true
 	}
 
-	// Reject hidden files (except allowed ones)
-	name := info.Name()
-	if IsHiddenFile(name) && !isAllowedHiddenFile(name) {
-		return true
-	}
-
 	// Reject files in .git directory
-	if strings.Contains(path, "/.git/") || strings.HasSuffix(path, "/.git") {
+	path = filepath.ToSlash(path)
+	if info.Name() == ".git" || strings.Contains(path, "/.git/") || strings.HasSuffix(path, "/.git") {
 		return true
 	}
 

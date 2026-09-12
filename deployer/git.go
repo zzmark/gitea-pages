@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -160,12 +159,7 @@ func (g *GitOperations) copyFiles(src, dst string) error {
 			}
 			return nil
 		}
-		if relPath != "." && IsHiddenFile(info.Name()) {
-			if !(info.Name() == ".nojekyll" && info.Mode().IsRegular()) &&
-				!(info.Name() == ".well-known" && info.IsDir()) {
-				return fmt.Errorf("%w: hidden entry %q", ErrUnsafeCheckoutContent, relPath)
-			}
-		}
+		// Other dot-prefixed files and directories are ordinary site content.
 
 		dstPath := filepath.Join(dst, relPath)
 		if info.IsDir() {
@@ -228,17 +222,6 @@ func (w *maxSiteWriter) Write(p []byte) (int, error) {
 	n, err := w.writer.Write(p)
 	*w.copied += int64(n)
 	return n, err
-}
-
-// isAllowedHiddenFile checks if a hidden file should be allowed
-func isAllowedHiddenFile(name string) bool {
-	allowed := []string{".well-known", ".nojekyll"}
-	for _, a := range allowed {
-		if name == a || strings.HasPrefix(name, a+"/") {
-			return true
-		}
-	}
-	return false
 }
 
 // RemoveGitDir removes the .git directory

@@ -96,6 +96,51 @@ func TestCopyFilesRejectsSetIDAndStickyModes(t *testing.T) {
 	}
 }
 
+func TestCopyFilesHiddenEntries(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		path    string
+		exclude bool
+	}{
+		{name: "隐藏目录-复制普通文件", path: ".github/workflows/pages.yml"},
+		{name: "隐藏目录-复制嵌套隐藏目录", path: "assets/.cache/.nested/index.html"},
+		{name: "隐藏目录-保留原有允许目录", path: ".well-known/token"},
+		{name: "隐藏文件-复制站点标记", path: ".nojekyll"},
+		{name: "隐藏文件-复制任意名称", path: ".custom-pages-data"},
+		{name: "隐藏文件-复制根目录文件", path: ".env"},
+		{name: "隐藏文件-复制隐藏目录内文件", path: ".config/.env"},
+		{name: "隐藏文件-复制Git配置文件", path: ".gitignore"},
+		{name: "Git元数据-排除元数据文件", path: ".git", exclude: true},
+		{name: "Git元数据-排除根目录", path: ".git/config", exclude: true},
+		{name: "Git元数据-排除隐藏目录内元数据", path: ".cache/.git/config", exclude: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src, dst := t.TempDir(), t.TempDir()
+			relPath := filepath.FromSlash(tc.path)
+			source := filepath.Join(src, relPath)
+			if err := os.MkdirAll(filepath.Dir(source), 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(source, []byte("site content"), 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			err := (&GitOperations{maxSiteSizeMB: 1}).copyFiles(src, dst)
+			if err != nil {
+				t.Fatal(err)
+			}
+			content, err := os.ReadFile(filepath.Join(dst, relPath))
+			if tc.exclude {
+				if !os.IsNotExist(err) {
+					t.Fatalf("excluded content was published: %v", err)
+				}
+			} else if err != nil || string(content) != "site content" {
+				t.Fatalf("copied content = %q, error = %v", content, err)
+			}
+		})
+	}
+}
+
 func TestRemoveGitDir(t *testing.T) {
 	// Create temp directory with .git folder
 	tempDir := t.TempDir()
@@ -142,31 +187,6 @@ func TestNewGitOperations(t *testing.T) {
 	}
 	if gitOps.maxSiteSizeMB != 100 {
 		t.Errorf("Expected maxSiteSizeMB 100, got %d", gitOps.maxSiteSizeMB)
-	}
-}
-
-func TestIsAllowedHiddenFile(t *testing.T) {
-	tests := []struct {
-		name     string
-		expected bool
-	}{
-		{".htaccess", false},
-		{".well-known", true},
-		{".nojekyll", true},
-		{".gitignore", false},
-		{".git", false},
-		{".env", false},
-		{".secret", false},
-		{".bashrc", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := isAllowedHiddenFile(tt.name)
-			if result != tt.expected {
-				t.Errorf("isAllowedHiddenFile(%s) = %v, expected %v", tt.name, result, tt.expected)
-			}
-		})
 	}
 }
 

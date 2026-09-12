@@ -216,12 +216,12 @@ func TestShouldRejectFile(t *testing.T) {
 		path     string
 		expected bool
 	}{
-		{"regular file", regularFile, false},
-		{"symlink", symlink, true},
-		{"hidden file", hiddenFile, true},
-		{"allowed hidden file", allowedHidden, false},
-		{"git directory", gitDir, true},
-		{"git file", gitFile, true},
+		{"文件过滤-允许普通文件", regularFile, false},
+		{"文件过滤-拒绝符号链接", symlink, true},
+		{"文件过滤-允许隐藏文件", hiddenFile, false},
+		{"文件过滤-允许站点标记", allowedHidden, false},
+		{"文件过滤-拒绝Git目录", gitDir, true},
+		{"文件过滤-拒绝Git元数据", gitFile, true},
 	}
 
 	for _, tt := range tests {
