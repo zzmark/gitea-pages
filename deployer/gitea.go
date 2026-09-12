@@ -16,6 +16,12 @@ type GiteaClient struct {
 	accessToken string
 }
 
+type GiteaAPIError struct {
+	StatusCode int
+}
+
+func (e *GiteaAPIError) Error() string { return fmt.Sprintf("API returned status %d", e.StatusCode) }
+
 // NewGiteaClient creates a new Gitea API client
 func NewGiteaClient(apiURL, accessToken string) *GiteaClient {
 	return &GiteaClient{
@@ -67,7 +73,7 @@ func (c *GiteaClient) GetRepoInfoContext(ctx context.Context, owner, repo string
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API returned status %d", resp.StatusCode)
+		return nil, &GiteaAPIError{StatusCode: resp.StatusCode}
 	}
 
 	body, err := io.ReadAll(resp.Body)

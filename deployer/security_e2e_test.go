@@ -111,6 +111,7 @@ func newSecurityE2EFixture(t *testing.T) *securityE2EFixture {
 		CloneTimeout:         100 * time.Millisecond,
 		MaxRepositorySizeMB:  10,
 		MaxSiteSizeMB:        10,
+		TokenEncryptionKey:   bytes.Repeat([]byte{7}, 32),
 	}
 	service := NewDeploymentService(config)
 	marker := filepath.Join(t.TempDir(), "git-invocations")
@@ -195,7 +196,7 @@ func responseStatus(t *testing.T, response *http.Response) int {
 func securityE2ENormalGit(t *testing.T, marker string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "git")
-	contents := "#!/bin/sh\nprintf 'clone\\n' >> " + shellQuote(marker) + "\nfor arg do target=$arg; done\nmkdir -p \"$target\"\nprintf '<h1>new site</h1>' > \"$target/index.html\"\n"
+	contents := "#!/bin/sh\n" + fakeGitRevisionCommand + "printf 'clone\\n' >> " + shellQuote(marker) + "\nfor arg do target=$arg; done\nmkdir -p \"$target\"\nprintf '<h1>new site</h1>' > \"$target/index.html\"\n"
 	if err := os.WriteFile(path, []byte(contents), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +206,7 @@ func securityE2ENormalGit(t *testing.T, marker string) string {
 func securityE2EFirstCloneHangsThenSucceeds(t *testing.T, marker, started string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "git")
-	contents := "#!/bin/sh\nif [ ! -e " + shellQuote(started) + " ]; then\n  : > " + shellQuote(started) + "\n  printf 'hang\\n' >> " + shellQuote(marker) + "\n  while :; do :; done\nfi\nprintf 'clone\\n' >> " + shellQuote(marker) + "\nfor arg do target=$arg; done\nmkdir -p \"$target\"\nprintf '<h1>new site</h1>' > \"$target/index.html\"\n"
+	contents := "#!/bin/sh\n" + fakeGitRevisionCommand + "if [ ! -e " + shellQuote(started) + " ]; then\n  : > " + shellQuote(started) + "\n  printf 'hang\\n' >> " + shellQuote(marker) + "\n  while :; do :; done\nfi\nprintf 'clone\\n' >> " + shellQuote(marker) + "\nfor arg do target=$arg; done\nmkdir -p \"$target\"\nprintf '<h1>new site</h1>' > \"$target/index.html\"\n"
 	if err := os.WriteFile(path, []byte(contents), 0700); err != nil {
 		t.Fatal(err)
 	}

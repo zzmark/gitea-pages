@@ -12,6 +12,9 @@ type WebHandler struct {
 	tokenStore  *TokenStore
 	domain      string
 	secret      string // For session validation
+	pagesDir    string
+	metadataKey []byte
+	scanner     *PagesScanner
 }
 
 // NewWebHandler creates a new web handler
@@ -201,12 +204,13 @@ const indexTemplate = `<!DOCTYPE html>
         <div class="hero">
             <h1>🚀 Gitea Pages</h1>
             <p class="subtitle">零配置静态网站托管，推送即部署</p>
-            {{if .HasOAuth}}
             <div class="hero-buttons">
+                {{if .HasOAuth}}
                 <a href="/oauth/start" class="btn">授权 Gitea Pages</a>
                 <a href="/status" class="btn btn-outline">查看状态</a>
+                {{end}}
+                <a href="/sites" class="btn btn-outline">已部署站点</a>
             </div>
-            {{end}}
         </div>
 
         <div class="features">

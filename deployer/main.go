@@ -314,10 +314,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize repository verifier: %v", err)
 	}
-	deployer := NewWebhookDeployer(config, tokenStore, repositoryVerifier, NewDeploymentService(config))
+	deploymentService := NewDeploymentService(config)
+	deployer := NewWebhookDeployer(config, tokenStore, repositoryVerifier, deploymentService)
 
 	// Initialize web handler
 	webHandler := NewWebHandler(nil, tokenStore, config.Domain, string(config.SessionSecret))
+	webHandler.pagesDir = config.PagesDir
+	webHandler.metadataKey = append([]byte(nil), config.TokenEncryptionKey...)
+	webHandler.scanner = NewPagesScanner(config, tokenStore, repositoryVerifier, deploymentService)
 
 	// Initialize OAuth handler if configured
 	var oauthHandler *OAuthHandler
@@ -363,6 +367,8 @@ func main() {
 	// Web UI routes
 	router.HandleFunc("/", webHandler.HandleIndex)
 	router.HandleFunc("/status", webHandler.HandleStatus)
+	router.HandleFunc("/sites", webHandler.HandleSites)
+	router.HandleFunc("/sites/scan", webHandler.HandleScan)
 
 	// Create server with timeouts
 	server := &http.Server{

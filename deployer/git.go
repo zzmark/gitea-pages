@@ -63,6 +63,7 @@ type GitOperations struct {
 	maxSiteSizeMB int64
 	cloneTimeout  time.Duration
 	gitBinary     string
+	metadataKey   []byte
 }
 
 // NewGitOperations creates a new GitOperations instance
@@ -72,6 +73,7 @@ func NewGitOperations(config *Config) *GitOperations {
 		maxSiteSizeMB: config.MaxSiteSizeMB,
 		cloneTimeout:  config.CloneTimeout,
 		gitBinary:     "git",
+		metadataKey:   append([]byte(nil), config.TokenEncryptionKey...),
 	}
 }
 
@@ -80,10 +82,10 @@ func (g *GitOperations) Deploy(ctx context.Context, repo VerifiedRepository, tar
 	if repo.CloneURL == nil {
 		return fmt.Errorf("verified repository clone URL is required")
 	}
-	return g.deploy(ctx, repo.CloneURL, target, repo.AccessToken)
+	return g.deploy(ctx, repo, target)
 }
 
-func (g *GitOperations) deploy(ctx context.Context, clone *url.URL, target SiteTarget, token string) error {
+func (g *GitOperations) deploy(ctx context.Context, repo VerifiedRepository, target SiteTarget) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -99,7 +101,7 @@ func (g *GitOperations) deploy(ctx context.Context, clone *url.URL, target SiteT
 
 	// Clone into an otherwise empty directory.
 	checkoutDir := filepath.Join(tempDir, "repository")
-	if err := runGitClone(ctx, g.gitCommand(), clone, checkoutDir, token); err != nil {
+	if err := runGitClone(ctx, g.gitCommand(), repo.CloneURL, checkoutDir, repo.AccessToken); err != nil {
 		return fmt.Errorf("failed to clone: %w", err)
 	}
 
@@ -119,6 +121,19 @@ func (g *GitOperations) deploy(ctx context.Context, clone *url.URL, target SiteT
 	defer os.RemoveAll(staging)
 	if err := g.copyFiles(checkoutDir, staging); err != nil {
 		return fmt.Errorf("failed to copy files: %w", err)
+	}
+	revision, err := checkoutRevision(ctx, g.gitCommand(), checkoutDir)
+	if err != nil {
+		return err
+	}
+	if err := writeDeploymentRecord(staging, DeploymentRecord{
+		RepositoryID: repo.ID, Owner: repo.Owner, Repository: repo.Name,
+		Revision: revision, UpdatedAt: time.Now().UTC(),
+	}, g.metadataKey); err != nil {
+		return fmt.Errorf("record deployment: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	return replaceSiteAtomically(staging, target)
 }
@@ -154,6 +169,12 @@ func (g *GitOperations) copyFiles(src, dst string) error {
 			return fmt.Errorf("%w: symlink %q", ErrUnsafeCheckoutContent, relPath)
 		}
 		if relPath != "." && info.Name() == ".git" {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if relPath == deploymentMetadataFile {
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
