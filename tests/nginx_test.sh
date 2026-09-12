@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+bash tests/nginx_startup_test.sh
+
 image="gitea-pages-nginx:test"
 container="gitea-pages-nginx-test-$$"
 pages_dir="$(mktemp -d "$PWD/.nginx-pages.XXXXXX")"
@@ -39,14 +41,16 @@ default_nginx="$(docker run --rm --network none --add-host deployer:127.0.0.1 \
     -e PAGES_DOMAIN=pages.invalid "${image}-default-domain" \
     /usr/local/bin/start-nginx.sh -T 2>&1)"
 grep -Fq 'pages.invalid' <<<"$default_nginx"
+grep -Fq 'server deployer:8080;' <<<"$default_nginx"
 # DOMAIN is the complete Pages domain.  Existing installations use values such
 # as pages.example.com, which must continue to route alice.pages.example.com.
 docker build -t "$image" ./nginx
 
 docker run --rm --network none --read-only --user 1000:1000 --cap-drop ALL \
     --security-opt no-new-privileges:true \
-    --add-host deployer:127.0.0.1 \
+    --add-host pages-backend:127.0.0.1 \
     -e PAGES_DOMAIN=pages.example.com \
+    -e PAGES_DEPLOYER_UPSTREAM=pages-backend:9090 \
     --tmpfs /tmp:rw,nosuid,nodev,noexec,uid=1000,gid=1000,mode=700 \
     --tmpfs /var/cache/nginx:rw,nosuid,nodev,noexec,uid=1000,gid=1000,mode=700 \
     "$image" /usr/local/bin/start-nginx.sh -t
@@ -63,8 +67,9 @@ grep -Fq 'limit_req zone=webhook' <<<"$rendered_nginx"
 
 docker run -d --name "$container" --read-only --user 1000:1000 --cap-drop ALL \
     --security-opt no-new-privileges:true \
-    --add-host deployer:host-gateway \
+    --add-host pages-backend:host-gateway \
     -e PAGES_DOMAIN=pages.example.com \
+    -e PAGES_DEPLOYER_UPSTREAM=pages-backend:8080 \
     -p "127.0.0.1:${host_port}:8080" \
     -v "$pages_dir:/var/www/pages:ro" \
     --tmpfs /tmp:rw,nosuid,nodev,noexec,uid=1000,gid=1000,mode=700 \

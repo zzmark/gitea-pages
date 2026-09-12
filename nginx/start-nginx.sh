@@ -9,9 +9,12 @@ case "$pages_domain" in
         ;;
 esac
 
+deployer_upstream=${PAGES_DEPLOYER_UPSTREAM:-deployer:8080}
+
 domain_regex=$(printf '%s' "$pages_domain" | sed 's/\./\\\\./g')
 sed -e "s/__PAGES_DOMAIN_REGEX__/${domain_regex}/g" \
     -e "s/__PAGES_DOMAIN_LITERAL__/${pages_domain}/g" \
+    -e "s/__PAGES_DEPLOYER_UPSTREAM__/${deployer_upstream}/g" \
     /etc/nginx/nginx.conf.template > /tmp/nginx.conf
 
 if [ "$#" -gt 0 ]; then

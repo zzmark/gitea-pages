@@ -22,6 +22,7 @@ PAGES_TOKEN_ENCRYPTION_KEY_HOST_FILE=$audit_dir/token_encryption_key
 PAGES_OAUTH_CLIENT_SECRET_HOST_FILE=$audit_dir/oauth_client_secret
 PAGES_DATA_DIR=$audit_dir/pages
 PAGES_HTTP_PORT=18080
+PAGES_DEPLOYER_UPSTREAM=pages-backend:9090
 PAGES_UID=1234
 PAGES_GID=5678
 EOF
@@ -57,6 +58,8 @@ with open(os.environ["RELATIVE_CONFIG"], encoding="utf-8") as relative_file:
 def require(condition, message):
     if not condition:
         raise SystemExit(message)
+
+require(nginx.get("environment", {}).get("PAGES_DEPLOYER_UPSTREAM") == "pages-backend:9090", "nginx must receive the configured Deployer upstream")
 
 runtime_uid = "1234"
 runtime_gid = "5678"

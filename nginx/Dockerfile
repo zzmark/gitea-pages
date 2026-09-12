@@ -10,8 +10,8 @@ RUN mkdir -p /var/www/pages /var/cache/nginx && \
     adduser -u "${PUID}" -S pagesuser -G pagesgroup -h /var/www/pages && \
     chown -R pagesuser:pagesgroup /var/www/pages /var/cache/nginx
 
-# Render the domain-specific virtual hosts at container startup. This keeps a
-# pre-built image reusable across installations with different Pages domains.
+# Render virtual hosts and the Deployer upstream at container startup so the
+# same image supports different Pages domains and backend service names.
 COPY nginx.conf /etc/nginx/nginx.conf.template
 COPY start-nginx.sh /usr/local/bin/start-nginx.sh
 RUN chmod 755 /usr/local/bin/start-nginx.sh && \

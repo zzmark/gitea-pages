@@ -26,6 +26,14 @@ supported. Start with a fresh Deployer data volume and complete OAuth again.
 See [`docs/security.md`](../../docs/security.md) for security and incident
 response procedures.
 
+To use a different internal Deployer service name or network alias, set
+`PAGES_DEPLOYER_UPSTREAM=pages-backend:8080` in `.env`. The default is
+`deployer:8080`. Use a hostname or IPv4 address and the container's listening
+port, without an HTTP scheme or path. Recreate Nginx with
+`docker compose up -d nginx` after changing this value. If you rename the
+Compose service itself, also update `depends_on`; both services must share
+the backend network.
+
 ---
 
 旧版的一体化本地示例已删除：它直接暴露 Deployer、在环境文件中保存凭据，并且
@@ -49,3 +57,17 @@ Nginx；`DOMAIN` 是完整 Pages 域名，公开 OAuth 回调和 webhook 端点�
 历史明文 token 数据库和共享 webhook 凭据不再受支持。请使用新的 Deployer
 数据卷启动，并让用户重新完成 OAuth。安全与事件响应流程请参见
 [`docs/security.md`](../../docs/security.md)。
+
+### 配置 Deployer 内部上游地址
+
+在 `.env` 中指定服务名或网络别名和容器内部监听端口：
+
+```dotenv
+PAGES_DEPLOYER_UPSTREAM=pages-backend:8080
+```
+
+默认值为 `deployer:8080`。支持主机名或 IPv4 地址，不包含 `http://` 或路径。
+启动脚本直接将上游地址写入 Nginx 配置；更改变量后执行
+`docker compose up -d nginx` 重新创建容器即可，无需因地址变化重新构建镜像。
+若重命名 Compose 中的服务键，还需同步调整 `depends_on`；目标服务必须能从
+Nginx 的后端网络访问。
