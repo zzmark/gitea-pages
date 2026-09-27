@@ -120,7 +120,7 @@ func TestFullScanReconcilesAuthorizedScopes(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"name": "gh-pages", "commit": map[string]string{"id": testDeploymentRevision}})
 		}))
 		defer api.Close()
-		config := &Config{PagesDir: t.TempDir(), Domain: "pages.test", GiteaAPIURL: api.URL, TokenEncryptionKey: key, EnableOrganizationHooks: true, MaxConcurrentDeploys: 2, AcquireTimeout: time.Second, CloneTimeout: time.Second, MaxRepositorySizeMB: 10, MaxSiteSizeMB: 10}
+		config := &Config{PagesDir: t.TempDir(), Domain: "pages.test", GiteaAPIURL: api.URL, MetadataSigningKey: key, EnableOrganizationHooks: true, MaxConcurrentDeploys: 2, AcquireTimeout: time.Second, CloneTimeout: time.Second, MaxRepositorySizeMB: 10, MaxSiteSizeMB: 10}
 		verifier, err := NewRepositoryVerifierWithPublicURL(api.URL, "https://gitea.test", store)
 		if err != nil {
 			t.Fatal(err)

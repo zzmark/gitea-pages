@@ -56,25 +56,16 @@ services:
         source: ${PAGES_DATA_DIR:-./pages/webroot}
         target: /var/www/pages
       - deployer_data:/var/lib/deployer:rw
-    secrets:
-      - source: session_secret
-        target: gitea_pages_session_secret
-      - source: token_encryption_key
-        target: gitea_pages_token_encryption_key
-      - source: oauth_client_secret
-        target: gitea_pages_oauth_client_secret
     environment:
       DOMAIN: ${PAGES_DOMAIN:?PAGES_DOMAIN must be set to the complete Pages domain}
       APP_ENV: ${PAGES_APP_ENV:-production}
       WEBHOOK_PORT: "8080"
       PAGES_DATA_DIR: /var/www/pages
       DEPLOYER_DATA_DIR: /var/lib/deployer
-      SESSION_SECRET_FILE: /run/secrets/gitea_pages_session_secret
-      TOKEN_ENCRYPTION_KEY_FILE: /run/secrets/gitea_pages_token_encryption_key
-      OAUTH_CLIENT_SECRET_FILE: /run/secrets/gitea_pages_oauth_client_secret
-      GITEA_API_URL: ${PAGES_GITEA_API_URL:?PAGES_GITEA_API_URL must be set}
-      GITEA_PUBLIC_URL: ${PAGES_GITEA_PUBLIC_URL:-${PAGES_GITEA_API_URL:?PAGES_GITEA_API_URL must be set}}
-      OAUTH_CLIENT_ID: ${PAGES_OAUTH_CLIENT_ID:?PAGES_OAUTH_CLIENT_ID must be set}
+      GITEA_API_URL: ${PAGES_GITEA_API_URL:-}
+      GITEA_PUBLIC_URL: ${PAGES_GITEA_PUBLIC_URL:-}
+      OAUTH_CLIENT_ID: ${PAGES_OAUTH_CLIENT_ID:-}
+      OAUTH_CLIENT_SECRET: ${PAGES_OAUTH_CLIENT_SECRET:-}
       OAUTH_REDIRECT_URL: https://${PAGES_DOMAIN:?PAGES_DOMAIN must be set to the complete Pages domain}/oauth/callback
       WEBHOOK_PUBLIC_URL: https://${PAGES_DOMAIN:?PAGES_DOMAIN must be set to the complete Pages domain}/webhook
       MAX_SITE_SIZE_MB: ${PAGES_MAX_SITE_SIZE_MB:-100}
@@ -94,14 +85,6 @@ services:
 volumes:
   deployer_data:
     name: gitea-pages-deployer-data
-
-secrets:
-  session_secret:
-    file: ${PAGES_SESSION_SECRET_HOST_FILE:?PAGES_SESSION_SECRET_HOST_FILE must name a readable secret file}
-  token_encryption_key:
-    file: ${PAGES_TOKEN_ENCRYPTION_KEY_HOST_FILE:?PAGES_TOKEN_ENCRYPTION_KEY_HOST_FILE must name a readable secret file}
-  oauth_client_secret:
-    file: ${PAGES_OAUTH_CLIENT_SECRET_HOST_FILE:?PAGES_OAUTH_CLIENT_SECRET_HOST_FILE must name a readable secret file}
 
 networks:
   pages_frontend:

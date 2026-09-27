@@ -45,7 +45,7 @@ func deploymentSignature(key, record []byte) []byte {
 
 func writeDeploymentRecord(staging string, record DeploymentRecord, key []byte) error {
 	if len(key) != 32 {
-		return errors.New("deployment metadata requires the token encryption key")
+		return errors.New("deployment metadata requires a signing key")
 	}
 	data, err := json.Marshal(record)
 	if err != nil {

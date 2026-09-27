@@ -11,7 +11,7 @@ Treat a failure of any gate in this document as a release blocker.
   organization) by HMAC verification of the exact request body. Secrets are
   independently generated and are never shared between scopes.
 - **OAuth tokens never come from payload identity.** A webhook body cannot
-  select an OAuth grant or its permissions. The saved, encrypted grant belongs
+  select an OAuth grant or its permissions. The saved SQLite grant belongs
   to the registered hook scope.
 - **Gitea API metadata is canonical.** The Deployer resolves the hook scope and
   repository through Gitea before it accepts an owner, repository ID, clone URL,
@@ -31,16 +31,21 @@ token pool. Set `ENABLE_ORGANIZATION_HOOKS=true` to preserve that automatic
 registration behavior; operators may explicitly disable it for installations
 that choose to serve personal repositories only.
 
-## Secret rotation
+## Credentials and control access
 
-Rotate one scope at a time. Create a new per-hook key/secret pair, update the
-matching Gitea hook, persist the new encrypted credential, then send a signed
-delivery and confirm it reaches the intended site. Retire the old credential
-only after that delivery succeeds. Rotate OAuth client, session, and encryption
-secrets through a planned restart; preserve the existing encryption key while
-any stored token still depends on it.
-Never put secrets in Compose environment variables, repository files, image
-layers, logs, or command-line arguments.
+OAuth client credentials, OAuth grants, and hook credentials are stored in
+plaintext SQLite. The database also holds an automatically generated random
+value for signing sessions and deployment records. Restrict and back up the
+Deployer data volume. An optional `.env` OAuth client secret only seeds a new
+database; prefer entering it through `/config` after deployment.
+
+The application does not authenticate administrators for its control pages.
+Operations must restrict the Pages control host, including `/config`, `/status`,
+and `/sites`, to administrators while allowing Gitea's webhook deliveries and
+the OAuth callback to reach their endpoints. Rotate a hook credential by
+updating the corresponding Gitea hook, verifying a signed delivery, and then
+retiring the previous credential. A Gitea target or OAuth client change through
+`/config` clears existing grants and hook credentials on manual reload.
 
 ## Incident response
 
@@ -48,7 +53,7 @@ layers, logs, or command-line arguments.
 
 1. Disable the affected Gitea OAuth grant and hook immediately; do not infer
    the affected account from a webhook payload.
-2. Revoke the OAuth token in Gitea, remove the encrypted token row, and rotate
+2. Revoke the OAuth token in Gitea, remove the SQLite token row, and rotate
    that hook's key and secret.
 3. Inspect Gitea audit logs, Deployer logs, hook deliveries, and publication
    timestamps for the affected scope. Preserve the evidence and deploy a known
@@ -81,10 +86,9 @@ layers, logs, or command-line arguments.
 
 ## Unsupported legacy credentials
 
-The runtime has no compatibility path for the historical plaintext token
-database or shared webhook secret. Start with a fresh Deployer data volume and
-have users complete OAuth again so that encrypted grants and per-hook
-credentials are created. Preserve the published Pages directory separately if
+The runtime has no compatibility path for earlier database schemas or shared
+webhook secrets. Start with a fresh Deployer data volume and complete OAuth
+again. Preserve the published Pages directory separately if
 existing static content must remain available during that process.
 
 ## Release evidence

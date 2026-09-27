@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"log"
@@ -27,7 +26,7 @@ type Config struct {
 	OAuthRedirectURL        string
 	WebhookPublicURL        string // URL that Gitea can reach for webhooks
 	SessionSecret           []byte
-	TokenEncryptionKey      []byte
+	MetadataSigningKey      []byte
 	CloneTimeout            time.Duration
 	AcquireTimeout          time.Duration
 	MaxConcurrentDeploys    int
@@ -78,7 +77,7 @@ func LoadConfig() (*Config, error) {
 	}
 	appEnv := os.Getenv("APP_ENV")
 	giteaAPIURL := os.Getenv("GITEA_API_URL")
-	if err := validateGiteaURL(giteaAPIURL, appEnv); err != nil {
+	if err := validateOptionalPublicURL("GITEA_API_URL", giteaAPIURL, appEnv); err != nil {
 		return nil, err
 	}
 	giteaPublicURL := os.Getenv("GITEA_PUBLIC_URL")
@@ -94,29 +93,6 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
-	sessionSecret, err := loadOptionalSecretFile(os.Getenv("SESSION_SECRET_FILE"), os.Getenv("SESSION_SECRET"))
-	if err != nil {
-		return nil, fmt.Errorf("SESSION_SECRET_FILE: %w", err)
-	}
-	if len(sessionSecret) < 32 {
-		return nil, errors.New("SESSION_SECRET_FILE or SESSION_SECRET must contain at least 32 bytes")
-	}
-
-	tokenEncryptionKey, err := loadRawSecretFile(os.Getenv("TOKEN_ENCRYPTION_KEY_FILE"))
-	if err != nil {
-		return nil, fmt.Errorf("TOKEN_ENCRYPTION_KEY_FILE: %w", err)
-	}
-	if len(tokenEncryptionKey) == 0 {
-		return nil, errors.New("TOKEN_ENCRYPTION_KEY_FILE is required")
-	}
-	if len(tokenEncryptionKey) != 32 {
-		return nil, errors.New("TOKEN_ENCRYPTION_KEY_FILE must contain exactly 32 bytes")
-	}
-
-	oauthClientSecret, err := loadOAuthClientSecret(os.Getenv("OAUTH_CLIENT_ID"), os.Getenv("OAUTH_CLIENT_SECRET_FILE"), os.Getenv("OAUTH_CLIENT_SECRET"))
-	if err != nil {
-		return nil, err
-	}
 	enableHTTPS := os.Getenv("ENABLE_HTTPS") == "true"
 
 	return &Config{
@@ -127,11 +103,9 @@ func LoadConfig() (*Config, error) {
 		GiteaAPIURL:             giteaAPIURL,
 		GiteaPublicURL:          giteaPublicURL,
 		OAuthClientID:           os.Getenv("OAUTH_CLIENT_ID"),
-		OAuthClientSecret:       oauthClientSecret,
+		OAuthClientSecret:       os.Getenv("OAUTH_CLIENT_SECRET"),
 		OAuthRedirectURL:        os.Getenv("OAUTH_REDIRECT_URL"),
 		WebhookPublicURL:        os.Getenv("WEBHOOK_PUBLIC_URL"),
-		SessionSecret:           sessionSecret,
-		TokenEncryptionKey:      tokenEncryptionKey,
 		CloneTimeout:            cloneTimeout,
 		AcquireTimeout:          acquireTimeout,
 		MaxConcurrentDeploys:    maxConcurrentDeploys,
@@ -140,56 +114,6 @@ func LoadConfig() (*Config, error) {
 		EnableOrganizationHooks: enableOrganizationHooks,
 		EnableHTTPS:             enableHTTPS,
 	}, nil
-}
-
-func readSecretFile(path string) ([]byte, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read secret file: %w", err)
-	}
-	b = bytes.TrimSpace(b)
-	if len(b) == 0 {
-		return nil, errors.New("secret file is empty")
-	}
-	return b, nil
-}
-
-func loadOptionalSecretFile(path, legacyValue string) ([]byte, error) {
-	if path == "" {
-		return []byte(legacyValue), nil
-	}
-	return readSecretFile(path)
-}
-
-// loadRawSecretFile is for binary credentials. In particular, an AES key may
-// legitimately start or end with a byte that Unicode whitespace trimming would
-// discard, so it must never pass through readSecretFile.
-func loadRawSecretFile(path string) ([]byte, error) {
-	if path == "" {
-		return nil, nil
-	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read secret file: %w", err)
-	}
-	if len(b) == 0 {
-		return nil, errors.New("secret file is empty")
-	}
-	return b, nil
-}
-
-func loadOAuthClientSecret(clientID, path, legacyValue string) (string, error) {
-	if path == "" {
-		if clientID != "" && legacyValue == "" {
-			return "", errors.New("OAUTH_CLIENT_SECRET_FILE or OAUTH_CLIENT_SECRET is required when OAUTH_CLIENT_ID is set")
-		}
-		return legacyValue, nil
-	}
-	secret, err := readSecretFile(path)
-	if err != nil {
-		return "", fmt.Errorf("OAUTH_CLIENT_SECRET_FILE: %w", err)
-	}
-	return string(secret), nil
 }
 
 func validateGiteaURL(rawURL, appEnv string) error {
@@ -298,82 +222,33 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Initialize token store for OAuth with SQLite persistence
-	tokenStore, err := NewTokenStore(config.DataDir, config.TokenEncryptionKey)
+	// The database holds settings and OAuth credentials. A local random signing
+	// key is generated once and persisted beside them.
+	tokenStore, err := NewTokenStore(config.DataDir)
 	if err != nil {
-		log.Fatalf("Failed to initialize encrypted token store: %v", err)
+		log.Fatalf("Failed to initialize token store: %v", err)
 	}
-
-	// Webhooks are enabled only after encrypted token and per-hook credential
-	// storage exists. There is no runtime shared-secret fallback.
-	giteaPublicURL := config.GiteaPublicURL
-	if giteaPublicURL == "" {
-		giteaPublicURL = config.GiteaAPIURL
-	}
-	repositoryVerifier, err := NewRepositoryVerifierWithPublicURL(config.GiteaAPIURL, giteaPublicURL, tokenStore)
+	key, active, err := tokenStore.initSettings(settingsFromConfig(config))
 	if err != nil {
-		log.Fatalf("Failed to initialize repository verifier: %v", err)
+		log.Fatalf("Failed to initialize settings: %v", err)
 	}
-	deploymentService := NewDeploymentService(config)
-	deployer := NewWebhookDeployer(config, tokenStore, repositoryVerifier, deploymentService)
-
-	// Initialize web handler
-	webHandler := NewWebHandler(nil, tokenStore, config.Domain, string(config.SessionSecret))
-	webHandler.pagesDir = config.PagesDir
-	webHandler.metadataKey = append([]byte(nil), config.TokenEncryptionKey...)
-	webHandler.scanner = NewPagesScanner(config, tokenStore, repositoryVerifier, deploymentService)
-
-	// Initialize OAuth handler if configured
-	var oauthHandler *OAuthHandler
-	if config.OAuthClientID != "" && config.GiteaAPIURL != "" {
-		oauthConfig := oauthConfigFromAppConfig(config)
-
-		// Use WebhookPublicURL if set, otherwise derive from redirect URL
-		webhookURL := config.WebhookPublicURL
-		if webhookURL == "" {
-			webhookURL = "http://deployer:8080/webhook"
-			if config.OAuthRedirectURL != "" {
-				// Derive webhook URL from redirect URL for external access
-				parts := strings.Split(config.OAuthRedirectURL, "/")
-				if len(parts) >= 3 {
-					webhookURL = parts[0] + "//" + parts[2] + "/webhook"
-				}
-			}
-		}
-
-		log.Printf("OAuth Auth URL (browser): %s", oauthConfig.PublicAuthURL)
-		log.Printf("OAuth Token URL (internal): %s", oauthConfig.TokenURL)
-		log.Printf("Webhook URL for OAuth registrations: %s", webhookURL)
-
-		oauthHandler = NewOAuthHandler(oauthConfig, tokenStore, webhookURL, string(config.SessionSecret))
-		webHandler.oauthConfig = oauthConfig
-		// Start background token refresh (every 24 hours)
-		// This proactively refreshes tokens before they expire
-		oauthHandler.StartBackgroundRefresh(24)
+	config.SessionSecret = append([]byte(nil), key...)
+	config.MetadataSigningKey = append([]byte(nil), key...)
+	app := &controlApp{base: config, store: tokenStore}
+	runtime, err := app.build(active)
+	if err != nil {
+		log.Fatalf("Failed to load active settings: %v", err)
 	}
-
-	// Setup routes
-	router := http.NewServeMux()
-	router.HandleFunc("/webhook", deployer.HandleWebhook)
-	router.HandleFunc("/health", handleHealth)
-
-	// OAuth routes
-	if oauthHandler != nil {
-		router.HandleFunc("/oauth/start", oauthHandler.HandleStart)
-		router.HandleFunc("/oauth/authorize", oauthHandler.HandleAuthorize)
-		router.HandleFunc("/oauth/callback", oauthHandler.HandleCallback)
+	app.current.Store(runtime)
+	if runtime.oauth != nil {
+		go app.refreshCurrent()
 	}
-
-	// Web UI routes
-	router.HandleFunc("/", webHandler.HandleIndex)
-	router.HandleFunc("/status", webHandler.HandleStatus)
-	router.HandleFunc("/sites", webHandler.HandleSites)
-	router.HandleFunc("/sites/scan", webHandler.HandleScan)
+	go app.refreshLoop()
 
 	// Create server with timeouts
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", config.WebhookPort),
-		Handler:      router,
+		Handler:      app.routes(),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,

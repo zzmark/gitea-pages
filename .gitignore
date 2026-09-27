@@ -14,7 +14,8 @@ examples/quickstart/symlink-repo/
 
 # IDE and editor
 .idea/
-.vscode/
+.vscode/*
+!.vscode/settings.json
 *.swp
 *.swo
 *~

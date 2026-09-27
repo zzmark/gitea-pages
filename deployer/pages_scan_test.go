@@ -122,7 +122,7 @@ func TestHandleScanAuthorization(t *testing.T) {
 func TestScanSharesDeploymentLock(t *testing.T) {
 	t.Run("全量扫描-发布路径属于另一仓库时保留现有站点", func(t *testing.T) {
 		key := bytes.Repeat([]byte{9}, 32)
-		config := &Config{PagesDir: t.TempDir(), Domain: "pages.test", TokenEncryptionKey: key, MaxConcurrentDeploys: 1, AcquireTimeout: time.Second}
+		config := &Config{PagesDir: t.TempDir(), Domain: "pages.test", MetadataSigningKey: key, MaxConcurrentDeploys: 1, AcquireTimeout: time.Second}
 		record := DeploymentRecord{RepositoryID: 1, Owner: "alice", Repository: "alice.pages.test", Revision: testDeploymentRevision, UpdatedAt: time.Now().UTC()}
 		target := createCatalogSite(t, config.PagesDir, "alice", "alice.pages.test", &record, key)
 		_, err := NewDeploymentService(config).Reconcile(context.Background(), VerifiedRepository{ID: 2, Owner: "alice", Name: "alice"}, target, func(context.Context) (string, error) { return testDeploymentRevision, nil })
@@ -135,7 +135,7 @@ func TestScanSharesDeploymentLock(t *testing.T) {
 	})
 	t.Run("全量扫描-取得Webhook共享锁后重新检查版本", func(t *testing.T) {
 		key := bytes.Repeat([]byte{9}, 32)
-		config := &Config{PagesDir: t.TempDir(), Domain: "pages.test", TokenEncryptionKey: key, MaxConcurrentDeploys: 1, AcquireTimeout: time.Second}
+		config := &Config{PagesDir: t.TempDir(), Domain: "pages.test", MetadataSigningKey: key, MaxConcurrentDeploys: 1, AcquireTimeout: time.Second}
 		service := NewDeploymentService(config)
 		target := createCatalogSite(t, config.PagesDir, "alice", "site", nil, key)
 		release, err := service.limiter.Acquire(context.Background(), target.Path())

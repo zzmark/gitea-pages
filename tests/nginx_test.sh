@@ -155,39 +155,26 @@ for request_pid in "${request_pids[@]}"; do
 done
 grep -Fxq '429' "$rate_statuses"
 
-printf '%032d\n' 0 > "$secret_dir/session"
-printf '%032d\n' 0 > "$secret_dir/token-key"
-printf 'oauth-client-secret\n' > "$secret_dir/oauth-client-secret"
-
 deployer_compose="$(PAGES_DOMAIN=pages.example.com PAGES_GITEA_API_URL=https://gitea.example.com \
     PAGES_GITEA_PUBLIC_URL=https://gitea.example.com PAGES_OAUTH_CLIENT_ID=pages-client \
-    PAGES_SESSION_SECRET_HOST_FILE="$secret_dir/session" \
-    PAGES_TOKEN_ENCRYPTION_KEY_HOST_FILE="$secret_dir/token-key" \
-    PAGES_OAUTH_CLIENT_SECRET_HOST_FILE="$secret_dir/oauth-client-secret" \
     docker compose config deployer)"
 nginx_compose="$(PAGES_DOMAIN=pages.example.com PAGES_GITEA_API_URL=https://gitea.example.com \
     PAGES_GITEA_PUBLIC_URL=https://gitea.example.com PAGES_OAUTH_CLIENT_ID=pages-client \
-    PAGES_SESSION_SECRET_HOST_FILE="$secret_dir/session" \
-    PAGES_TOKEN_ENCRYPTION_KEY_HOST_FILE="$secret_dir/token-key" \
-    PAGES_OAUTH_CLIENT_SECRET_HOST_FILE="$secret_dir/oauth-client-secret" \
     docker compose config nginx)"
 
 ! grep -Eq '^    ports:' <<<"$deployer_compose"
 grep -Fq 'read_only: true' <<<"$deployer_compose"
 grep -Fq 'ALL' <<<"$deployer_compose"
 grep -Fq 'pids_limit:' <<<"$deployer_compose"
-grep -Fq 'SESSION_SECRET_FILE: /run/secrets/gitea_pages_session_secret' <<<"$deployer_compose"
-grep -Fq 'source: session_secret' <<<"$deployer_compose"
+! grep -Fq 'SESSION_SECRET_FILE:' <<<"$deployer_compose"
+! grep -Fq 'source: session_secret' <<<"$deployer_compose"
 ! grep -Fq '/dev/null' <<<"$deployer_compose"
 grep -Fq 'OAUTH_REDIRECT_URL: https://pages.example.com/oauth/callback' <<<"$deployer_compose"
 grep -Fq 'WEBHOOK_PUBLIC_URL: https://pages.example.com/webhook' <<<"$deployer_compose"
 deployer_compose_default_public_url="$(PAGES_DOMAIN=pages.example.com PAGES_GITEA_API_URL=https://gitea.example.com \
     PAGES_OAUTH_CLIENT_ID=pages-client \
-    PAGES_SESSION_SECRET_HOST_FILE="$secret_dir/session" \
-    PAGES_TOKEN_ENCRYPTION_KEY_HOST_FILE="$secret_dir/token-key" \
-    PAGES_OAUTH_CLIENT_SECRET_HOST_FILE="$secret_dir/oauth-client-secret" \
     docker compose config deployer)"
-grep -Fq 'GITEA_PUBLIC_URL: https://gitea.example.com' <<<"$deployer_compose_default_public_url"
+grep -Fq 'GITEA_PUBLIC_URL: ""' <<<"$deployer_compose_default_public_url"
 grep -Fq 'published: "80"' <<<"$nginx_compose"
 grep -Fq 'target: 8080' <<<"$nginx_compose"
 grep -Fq 'read_only: true' <<<"$nginx_compose"

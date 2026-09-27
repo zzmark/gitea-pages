@@ -3,7 +3,9 @@ package main
 import (
 	"html/template"
 	"net/http"
+	"sort"
 	"strings"
+	"time"
 )
 
 // WebHandler handles web UI
@@ -15,6 +17,22 @@ type WebHandler struct {
 	pagesDir    string
 	metadataKey []byte
 	scanner     *PagesScanner
+}
+
+// The control host is restricted by the operator. A saved backend grant lets
+// its status pages work after the browser session has expired.
+func (h *WebHandler) storedControlUser() string {
+	if h.tokenStore == nil {
+		return ""
+	}
+	users := h.tokenStore.List()
+	sort.Strings(users)
+	for _, user := range users {
+		if token := h.tokenStore.Get(user); token != nil && token.AccessToken != "" && (token.ExpiresAt.IsZero() || token.ExpiresAt.After(time.Now())) {
+			return user
+		}
+	}
+	return ""
 }
 
 // NewWebHandler creates a new web handler
@@ -57,22 +75,32 @@ func (h *WebHandler) HandleIndex(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
-// HandleStatus shows authorization status for the authenticated user only
+// HandleStatus shows the saved backend authorization on the operator-gated host.
 func (h *WebHandler) HandleStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	// Validate session to get authenticated username
 	sessionCookie, err := r.Cookie(sessionCookieName)
 	authUsername := ""
 	if err == nil && sessionCookie != nil {
 		authUsername = ValidateSession(sessionCookie, h.secret)
 	}
+	if authUsername != "" && h.tokenStore != nil {
+		token := h.tokenStore.Get(authUsername)
+		if token == nil || token.AccessToken == "" || (!token.ExpiresAt.IsZero() && !token.ExpiresAt.After(time.Now())) {
+			authUsername = ""
+		}
+	}
 
-	// If no valid session, show login prompt
+	if authUsername == "" {
+		authUsername = h.storedControlUser()
+	}
+	// If no grant exists yet, show the one-time authorization prompt.
 	if authUsername == "" {
 		h.showStatusLoginPrompt(w, r)
 		return
 	}
 
-	// Show status for authenticated user only
+	// Show status for the saved backend authorization on an operator-gated host.
 	h.showUserStatus(w, authUsername)
 }
 
@@ -134,7 +162,7 @@ const statusLoginTemplate = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Gitea Pages - 状态</title><style>
 *{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f9fafb;min-height:100vh}.container{background:#fff;border-radius:16px;box-shadow:0 1px 3px #0000001a;overflow:hidden}.header{background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff;padding:40px;text-align:center}.header h1{margin:0;font-size:28px}.content{padding:40px;text-align:center}.icon{font-size:64px}.message{color:#6b7280;margin:20px 0}.btn{display:inline-block;background:#3b82f6;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:500;margin:10px}.btn:hover{background:#2563eb}.btn-secondary{background:#6b7280}.btn-secondary:hover{background:#4b5563}.error{color:#dc2626}
-</style></head><body><div class="container"><div class="header"><h1>📊 Gitea Pages 状态</h1></div><div class="content"><div class="icon">🔐</div><p class="message">请先授权以查看您的部署状态</p>{{if .HasOAuth}}<p><a href="/oauth/start" class="btn">授权 Gitea Pages</a></p>{{else}}<p class="error">OAuth 未配置，请联系管理员</p>{{end}}<p><a href="/" class="btn btn-secondary">返回首页</a></p></div></div></body></html>`
+</style></head><body><div class="container"><div class="header"><h1>📊 Gitea Pages 状态</h1></div><div class="content"><div class="icon">🔐</div><p class="message">尚无可用的后端授权</p>{{if .HasOAuth}}<p><a href="/oauth/start" class="btn">授权 Gitea Pages</a></p>{{else}}<p class="error">OAuth 未配置，请到 <a href="/config">运行配置</a>填写 Gitea 参数</p>{{end}}<p><a href="/" class="btn btn-secondary">返回首页</a></p></div></div></body></html>`
 
 const statusUserTemplate = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -210,6 +238,7 @@ const indexTemplate = `<!DOCTYPE html>
                 <a href="/status" class="btn btn-outline">查看状态</a>
                 {{end}}
                 <a href="/sites" class="btn btn-outline">已部署站点</a>
+                <a href="/config" class="btn btn-outline">运行配置</a>
             </div>
         </div>
 

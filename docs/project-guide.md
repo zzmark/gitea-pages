@@ -17,7 +17,7 @@ flowchart LR
     G[Gitea 仓库] -->|gh-pages 推送 / 删除| N[Nginx 入口]
     N -->|/webhook| D[Go Deployer]
     D -->|核验 scope 与仓库| API[Gitea API]
-    D -->|加密令牌、hook 凭据、投递去重| DB[(SQLite 数据卷)]
+    D -->|运行配置、令牌、hook 凭据、投递去重| DB[(SQLite 数据卷)]
     D -->|校验后原子发布| FS[(Pages 目录)]
     V[用户浏览器] -->|username.pages.example.com| N
     N -->|只读静态文件| FS
@@ -52,7 +52,7 @@ flowchart LR
 | **Nginx** | 精确区分控制域名与用户子域名；代理控制请求；提供静态文件 | 唯一发布宿主机端口；静态目录只读挂载；拒绝未知 Host、隐藏路径及 `_root` 内部路径 |
 | **Deployer** | OAuth、hook 注册和验证、Gitea 仓库核验、Git 克隆、站点发布 | 无宿主机端口；只在后端网络接收 Nginx 请求；唯一写入 Pages 目录的服务 |
 | **Gitea** | OAuth 授权、仓库与组织元数据、Webhook 投递、Git 仓库 | 仓库和克隆来源以配置的 Gitea 实例为准 |
-| **SQLite 数据卷** | 持久化加密 OAuth 令牌、hook 凭据和投递去重记录 | 加密密钥由独立 secret 文件提供 |
+| **SQLite 数据卷** | 持久化运行配置、OAuth 令牌、hook 凭据和投递去重记录 | 数据明文保存，需备份并限制数据卷访问 |
 | **Pages 数据目录** | 保存当前发布的网站文件 | Deployer 读写，Nginx 只读；不保存 Git 工作区 |
 
 Compose 默认只将 Nginx 的容器 `8080` 映射到宿主机 `80`；生产 HTTPS 由部署环境的外部入口提供。Deployer 的 `8080` 仅供 Compose 内部访问。
@@ -108,12 +108,12 @@ flowchart LR
     U[用户浏览器] -->|授权请求 + state| G[Gitea OAuth]
     G -->|授权码| C[Deployer 回调]
     C -->|交换令牌、读取用户| G
-    C -->|AES-GCM 加密后保存| DB[(SQLite)]
+    C -->|明文保存| DB[(SQLite)]
     C -->|按用户 / 组织生成独立凭据| H[Gitea scoped Webhook]
     H -->|后续投递| W[/webhook]
 ```
 
-OAuth scope 默认包含 `read:user`、`write:user`、`read:repository`，并在 `PAGES_ENABLE_ORGANIZATION_HOOKS=true` 时包含 `write:organization`。组织 hook 使用已授权的组织管理员 token 池；可按安装策略关闭组织 hook。访问令牌以 AES-256-GCM 加密保存，会话和 OAuth 客户端密钥来自 secret 文件。
+OAuth scope 默认包含 `read:user`、`write:user`、`read:repository`，并在 `PAGES_ENABLE_ORGANIZATION_HOOKS=true` 时包含 `write:organization`。组织 hook 使用已授权的组织管理员 token 池；可按安装策略关闭组织 hook。访问令牌、刷新令牌及 OAuth 客户端密钥保存在 SQLite；会话签名值由服务首次启动时生成并保存于同一数据库。
 
 ## 5. 代码与目录地图
 
@@ -125,7 +125,7 @@ OAuth scope 默认包含 `read:user`、`write:user`、`read:repository`，并在
 | `oauth.go`、`web.go` | OAuth 流程、令牌刷新、个人/组织 hook 注册、首页与授权状态页 |
 | `hook_auth.go`、`handler.go` | Webhook 认证、重放防护、事件处理及 HTTP 错误映射 |
 | `repository_verifier.go`、`gitea.go` | Gitea API 核验、scope 授权、规范仓库信息与可信克隆地址 |
-| `storage.go`、`token_crypto.go` | SQLite 持久化、令牌加密、hook 凭据和 delivery 去重 |
+| `storage.go`、`settings.go` | SQLite 持久化、运行配置、令牌、hook 凭据和 delivery 去重 |
 | `deployment_limiter.go`、`git.go` | 并发控制、克隆、站点文件筛选、staging 发布与删除 |
 | `site_target.go`、`security.go` | 站点路径构造、路径与文件安全检查、日志脱敏 |
 | `atomic_replace_linux.go`、`atomic_replace_unsupported.go` | Linux 安全原子发布/删除；其他平台显式拒绝这些操作 |
@@ -147,27 +147,24 @@ Go 服务使用标准库 HTTP 服务和 `modernc.org/sqlite`（纯 Go SQLite 驱
 
 ## 6. 配置与持久化
 
-`.env.example` 是 Compose 的公共配置入口；变量统一使用 `PAGES_` 前缀，再映射为容器内部配置。生产敏感值放在文件中，不能放进 `.env`。
+`.env.example` 是 Compose 的公共配置入口；变量统一使用 `PAGES_` 前缀，再映射为容器内部配置。Gitea 和资源限制变量仅用于新数据库首次启动的默认值，之后在 `/config` 保存草稿并手动重载。控制页面的管理员访问限制由运维负责。
 
 | 配置组 | 变量 | 默认 / 说明 |
 |---|---|---|
-| 域名和入口 | `PAGES_DOMAIN`、`PAGES_HTTP_PORT` | 必填完整 Pages 域名；宿主机 HTTP 端口默认 `80` |
+| 域名和入口 | `PAGES_DOMAIN`、`PAGES_HTTP_PORT`、`PAGES_DEPLOYER_UPSTREAM` | 必填完整 Pages 域名；宿主机 HTTP 端口默认 `80`，内部上游默认 `deployer:8080` |
+| 运行环境 | `PAGES_APP_ENV` | Compose 启动前设置，默认 `production` |
 | 数据目录 | `PAGES_DATA_DIR` | 默认 `./pages/webroot`；Deployer 写，Nginx 只读 |
-| Gitea | `PAGES_GITEA_API_URL`、`PAGES_GITEA_PUBLIC_URL` | API URL 必填；公开 Git 地址可选，未设置时沿用 API URL |
-| OAuth | `PAGES_OAUTH_CLIENT_ID` | 必填；Gitea 回调为 `https://<PAGES_DOMAIN>/oauth/callback` |
-| 文件密钥 | `PAGES_SESSION_SECRET_HOST_FILE` | 会话签名密钥，至少 32 字节 |
-| 文件密钥 | `PAGES_TOKEN_ENCRYPTION_KEY_HOST_FILE` | 必填，原始二进制，**恰好 32 字节**；丢失将无法解密令牌 |
-| 文件密钥 | `PAGES_OAUTH_CLIENT_SECRET_HOST_FILE` | OAuth 客户端密钥 |
+| Gitea | `PAGES_GITEA_API_URL`、`PAGES_GITEA_PUBLIC_URL` | 可选初始默认值；公开 Git 地址可留空并沿用 API URL |
+| OAuth | `PAGES_OAUTH_CLIENT_ID`、`PAGES_OAUTH_CLIENT_SECRET` | 可选初始默认值；Gitea 回调为 `https://<PAGES_DOMAIN>/oauth/callback` |
 | 资源限制 | `PAGES_MAX_SITE_SIZE_MB`、`PAGES_MAX_REPOSITORY_SIZE_MB` | 默认 `100 MB`、`1024 MB` |
 | 资源限制 | `PAGES_MAX_CONCURRENT_DEPLOYS`、`PAGES_CLONE_TIMEOUT`、`PAGES_ACQUIRE_TIMEOUT` | 默认 `4`、`1m`、`30s` |
 | 功能开关 | `PAGES_ENABLE_ORGANIZATION_HOOKS` | 默认 `true`；关闭后仅注册个人 hook |
-| 容器身份 | `PAGES_UID`、`PAGES_GID` | 默认 `1000:1000`；须能读写数据目录并读取 Compose secrets |
+| 容器身份 | `PAGES_UID`、`PAGES_GID` | 默认 `1000:1000`；须能读写数据目录 |
 
 | 持久数据 | 位置 | 作用 |
 |---|---|---|
 | 已发布站点 | 宿主机 `PAGES_DATA_DIR` | Nginx 当前提供的静态文件；按用户与仓库目录组织 |
 | Deployer 数据 | Compose 命名卷 `gitea-pages-deployer-data`，容器内 `/var/lib/deployer` | SQLite 凭据与去重状态 |
-| Secret 文件 | `.env` 指定的宿主机路径 | Compose 挂载到 `/run/secrets/`；与数据库、镜像及日志分离 |
 
 ## 7. 安全设计速览
 
@@ -178,9 +175,9 @@ Go 服务使用标准库 HTTP 服务和 `modernc.org/sqlite`（纯 Go SQLite 驱
 | 恶意 Git 内容 | HTTPS 克隆；限制仓库/站点大小和时间；阻止符号链接、特殊文件、危险权限；剥离 `.git`。普通点号文件会发布，但 Nginx 禁止访问隐藏 URL |
 | 发布期间失败或并发竞争 | 同一目标串行；同文件系统 staging；Linux 原子替换/删除 |
 | 容器或网络越权 | 仅 Nginx 发布端口；非 root、只读根文件系统、丢弃全部 capabilities、`no-new-privileges`、资源限制；Deployer 无 Docker socket 与 SSH key |
-| 令牌、密钥泄露 | OAuth token AES-256-GCM 加密；密钥以文件 secret 提供；日志不记录 hook header、签名或 payload |
+| 令牌、密钥泄露 | SQLite 明文持久化，限制并备份数据卷；日志不记录 hook header、签名或 payload |
 
-旧版明文 token 数据库和共享 Webhook Secret 不受支持；升级时使用新的 Deployer 数据卷并重新完成 OAuth。故障处置以 [`docs/security.md`](security.md) 为准。
+旧数据库不迁移；重新安装时使用新的 Deployer 数据卷并重新完成 OAuth。故障处置以 [`docs/security.md`](security.md) 为准。
 
 ## 8. 如何构建、验证和继续阅读
 

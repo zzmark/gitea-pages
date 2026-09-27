@@ -24,8 +24,8 @@ func TestHandleSites(t *testing.T) {
 		want       []string
 		unwanted   []string
 	}{
-		{name: "部署清单-未登录仅显示授权提示", noSession: true, wantStatus: 200, want: []string{"请先授权"}, unwanted: []string{"alice/blog", "team/docs", "bob/private"}},
-		{name: "部署清单-过期令牌不能读取清单", expired: true, wantStatus: 200, want: []string{"请先授权"}, unwanted: []string{"alice/blog", "team/docs"}},
+		{name: "部署清单-无浏览器会话沿用后端授权", noSession: true, wantStatus: 200, want: []string{"alice/blog", "team/docs"}, unwanted: []string{"bob/private"}},
+		{name: "部署清单-过期令牌不能读取清单", expired: true, wantStatus: 200, want: []string{"尚无可用的后端授权"}, unwanted: []string{"alice/blog", "team/docs"}},
 		{name: "部署清单-展示本人和有权限组织并隐藏其他仓库", wantStatus: 200, want: []string{"alice/blog", "team/docs", testDeploymentRevision[:12], "2026-09-12 03:04:05 UTC", "https://alice.pages.test/blog/", "未记录"}, unwanted: []string{"bob/private", "alice/recreated", "oauth-test-token"}},
 		{name: "部署清单-搜索仓库", query: "docs", wantStatus: 200, want: []string{"team/docs", "匹配 1 个"}, unwanted: []string{"alice/blog", "bob/private"}},
 		{name: "部署清单-搜索版本", query: testDeploymentRevision[:12], wantStatus: 200, want: []string{"alice/blog", "匹配 1 个"}, unwanted: []string{"team/docs"}},
@@ -52,7 +52,7 @@ func TestHandleSites(t *testing.T) {
 			createCatalogSite(t, root, "team", "docs", nil, key)
 			createCatalogSite(t, root, "bob", "private", nil, key)
 			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if tc.noSession || tc.expired {
+				if tc.expired {
 					t.Error("unauthenticated viewer called Gitea")
 				}
 				if r.Header.Get("Authorization") != "Bearer oauth-test-token" {

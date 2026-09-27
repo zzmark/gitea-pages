@@ -51,6 +51,9 @@ func (h *WebHandler) HandleSites(w http.ResponseWriter, r *http.Request) {
 	cookie, _ := r.Cookie(sessionCookieName)
 	username := ValidateSession(cookie, h.secret)
 	if username == "" {
+		username = h.storedControlUser()
+	}
+	if username == "" {
 		h.showStatusLoginPrompt(w, r)
 		return
 	}

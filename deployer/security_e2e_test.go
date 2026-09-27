@@ -75,7 +75,7 @@ func newSecurityE2EFixture(t *testing.T) *securityE2EFixture {
 	if err := os.Mkdir(pages, 0700); err != nil {
 		t.Fatal(err)
 	}
-	store, err := NewTokenStore(t.TempDir(), bytes.Repeat([]byte{7}, 32))
+	store, err := NewTokenStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func newSecurityE2EFixture(t *testing.T) *securityE2EFixture {
 		CloneTimeout:         100 * time.Millisecond,
 		MaxRepositorySizeMB:  10,
 		MaxSiteSizeMB:        10,
-		TokenEncryptionKey:   bytes.Repeat([]byte{7}, 32),
+		MetadataSigningKey:   bytes.Repeat([]byte{7}, 32),
 	}
 	service := NewDeploymentService(config)
 	marker := filepath.Join(t.TempDir(), "git-invocations")

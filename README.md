@@ -41,7 +41,7 @@ cp .env.example .env
 # Edit .env with your settings
 
 # The Compose file names GHCR images, so this path does not need the source
-# build contexts. Create the three secret files, then pull and run.
+# build contexts. Gitea can be configured at /config after startup.
 docker compose pull
 docker compose up -d
 ```
@@ -71,6 +71,9 @@ The default is `deployer:8080`. Use the container's listening address as `host:p
 ### OAuth2 Configuration (Recommended)
 
 Users can self-authorize to enable automatic webhook registration and private repo access.
+The control host (`/config`, `/status`, `/sites`) is intended for administrators;
+restrict access at your ingress or reverse proxy. The app does not implement
+administrator login. A fresh installation can start without any Gitea values.
 
 #### Step 1: Create OAuth2 Application in Gitea
 
@@ -85,12 +88,13 @@ Users can self-authorize to enable automatic webhook registration and private re
 
 #### Step 2: Configure Deployer
 
-Set the client ID in `.env`; keep the client secret in the
-`PAGES_OAUTH_CLIENT_SECRET_HOST_FILE` file described by `.env.example`. Compose
-uses `PAGES_DOMAIN` as the complete Pages domain (for example,
+Open `/config` on the Pages control host and fill in the Gitea API URL, OAuth
+Client ID, and Client Secret. Optional `.env` values seed a fresh database only.
+Compose uses `PAGES_DOMAIN` as the complete Pages domain (for example,
 `pages.yourdomain.com`) for public callback and webhook URLs:
 ```bash
 PAGES_OAUTH_CLIENT_ID=your-client-id
+PAGES_OAUTH_CLIENT_SECRET=your-client-secret
 # Optional when the browser and Git clone address is the same as
 # PAGES_GITEA_API_URL. Deployments always clone from this public address.
 PAGES_GITEA_PUBLIC_URL=https://gitea.example.com
@@ -103,6 +107,13 @@ PAGES_GITEA_PUBLIC_URL=https://gitea.example.com
 3. Login to Gitea and approve the authorization
 4. A scoped webhook is automatically registered for your authorized personal
    and organization scopes
+
+Deployer stores the OAuth grant in its SQLite volume and renews the
+access token in the background before it expires. The browser is needed for the
+initial authorization, not for ongoing deployments. Preserve the
+`gitea-pages-deployer-data` volume across restarts.
+Reauthorization is required if the Gitea grant is revoked, the refresh token
+expires during a prolonged outage, or these credentials are lost.
 
 ### Permission Explanation
 
@@ -173,7 +184,7 @@ Deployment accepts hidden files and directories without an allowlist. Git metada
 
 ### Legacy Installation Compatibility
 
-Historical plaintext token databases and shared webhook credentials are unsupported. Offline credential migration/rollback and automatic legacy credential upgrades have been removed. Installations using those formats must start with a fresh Deployer data volume and complete OAuth again. Preserve published sites separately through `PAGES_DATA_DIR`; see [security operations](docs/security.md).
+Earlier database schemas and shared webhook credentials are unsupported. Offline credential migration and automatic legacy upgrades are not provided. Start with a fresh Deployer data volume and complete OAuth again. Preserve published sites separately through `PAGES_DATA_DIR`; see [security operations](docs/security.md).
 
 ### Architecture
 
@@ -212,7 +223,7 @@ Historical plaintext token databases and shared webhook credentials are unsuppor
 | Path traversal protection | Input sanitization |
 | Git metadata and hidden paths | `.git` excluded from deployment; Nginx blocks hidden HTTP paths |
 | Webhook authentication | Per-hook key and HMAC-SHA256 secret; Gitea metadata is canonical |
-| Site size limit | `PAGES_MAX_SITE_SIZE_MB` in `.env` (default 100MB) |
+| Site size limit | `/config` (initial default `PAGES_MAX_SITE_SIZE_MB=100`) |
 | Private repo support | OAuth2 user tokens |
 | Network exposure | Only Nginx publishes a port; Deployer is private to Compose networks |
 
@@ -299,7 +310,7 @@ cp .env.example .env
 # 编辑 .env 填入你的配置
 
 # Compose 文件已指定 GHCR 镜像，此流程不需要源码构建上下文。
-# 按 .env.example 创建三个密钥文件后，拉取并运行。
+# 无需创建密钥文件；配置 Gitea 可在首次启动后通过 /config 完成。
 docker compose pull
 docker compose up -d
 ```
@@ -343,11 +354,13 @@ PAGES_DEPLOYER_UPSTREAM=pages-backend:8080
 
 #### 步骤 2：配置 Deployer
 
-在 `.env` 中设置客户端 ID；客户端密钥必须保存在 `.env.example` 所述的
-`PAGES_OAUTH_CLIENT_SECRET_HOST_FILE` 文件中。`PAGES_DOMAIN` 是完整的 Pages 域名（例如
+在 Pages 控制域名的 `/config` 页面填写 Gitea API URL、客户端 ID 和密钥。
+控制域名仅供管理员访问，由运维在入口或反向代理限制；项目不实现页面管理员登录。
+`.env` 中的 Gitea 值仅作为新数据库首次启动的默认值。`PAGES_DOMAIN` 是完整的 Pages 域名（例如
 `pages.yourdomain.com`），Compose 据此使用公开回调和 webhook 地址：
 ```bash
 PAGES_OAUTH_CLIENT_ID=你的客户端ID
+PAGES_OAUTH_CLIENT_SECRET=你的客户端密钥
 # 与 PAGES_GITEA_API_URL 相同时可省略。
 PAGES_GITEA_PUBLIC_URL=https://gitea.example.com
 ```
@@ -358,6 +371,11 @@ PAGES_GITEA_PUBLIC_URL=https://gitea.example.com
 2. 点击 **"授权 Gitea Pages"**
 3. 登录 Gitea 并批准授权
 4. 系统会为已授权的个人和组织范围自动注册独立 webhook
+
+Deployer 会将 OAuth 授权保存在 SQLite 数据卷中，并在访问令牌到期前由后端自动续期。
+浏览器只用于首次授权，之后自动部署不依赖浏览器页面。重启时须保留
+`gitea-pages-deployer-data` 数据卷。若在 Gitea 撤销授权、长期停机导致
+刷新令牌过期，或丢失这些凭据，才需要重新授权。
 
 ### 权限说明
 
@@ -423,11 +441,11 @@ git push -u origin gh-pages
 
 部署允许隐藏文件和目录，无需逐项加入白名单。Git 元数据（`.git`）不复制；站点根目录的 `.gitea-pages-deployment.json` 是系统保留的签名部署记录，仓库中的同名内容不会覆盖它。软链接、不安全路径、特殊文件和发布大小限制仍然接受检查。
 
-**Nginx 仍禁止通过 HTTP 访问隐藏路径**，包括部署记录文件。因此，允许部署隐藏内容并不代表 `/.well-known/` 等路径已开放访问。备份 Pages 数据时应保留内部部署记录及其对应的令牌加密密钥。
+**Nginx 仍禁止通过 HTTP 访问隐藏路径**，包括部署记录文件。因此，允许部署隐藏内容并不代表 `/.well-known/` 等路径已开放访问。备份 Pages 数据时应同时保留内部部署记录和 Deployer SQLite 数据卷。
 
 ### 旧版安装兼容性
 
-历史明文 token 数据库和共享 webhook 凭据不再受支持，离线凭据迁移、回滚及旧凭据自动升级能力已移除。使用这些旧格式的实例需要以新的 Deployer 数据卷启动，并重新完成 OAuth 授权。已发布站点通过 `PAGES_DATA_DIR` 单独保留；详见[安全运维说明](docs/security.md)。
+旧数据库结构和共享 webhook 凭据不再受支持，也不提供迁移。重新安装时使用新的 Deployer 数据卷，并重新完成 OAuth 授权。已发布站点通过 `PAGES_DATA_DIR` 单独保留；详见[安全运维说明](docs/security.md)。
 
 ### 架构图
 
@@ -466,7 +484,7 @@ git push -u origin gh-pages
 | 路径遍历防护 | 输入净化 |
 | Git 元数据与隐藏路径 | 部署排除 `.git`；Nginx 禁止 HTTP 访问隐藏路径 |
 | Webhook 鉴权 | 每个 hook 独立 key 和 HMAC-SHA256 secret；Gitea 元数据为准 |
-| 站点大小限制 | `.env` 中的 `PAGES_MAX_SITE_SIZE_MB`（默认 100MB） |
+| 站点大小限制 | `/config`（初始默认 `PAGES_MAX_SITE_SIZE_MB=100`） |
 | 私有仓库支持 | OAuth2 用户令牌 |
 | 网络暴露 | 仅 Nginx 发布端口；Deployer 仅存在于 Compose 私有网络 |
 

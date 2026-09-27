@@ -474,13 +474,13 @@ func (h *OAuthHandler) RefreshAllTokens() {
 			continue
 		}
 
-		// Check if token needs refresh (expires within 7 days or already expired)
+		// Renew shortly before expiry. Gitea's default access-token lifetime is
+		// one hour, so a seven-day window would refresh on every check.
 		shouldRefresh := false
 		if token.ExpiresAt.IsZero() {
-			// No expiration set, refresh anyway to be safe
-			shouldRefresh = true
-		} else if time.Now().Add(7 * 24 * time.Hour).After(token.ExpiresAt) {
-			// Expires within 7 days, refresh now
+			// If the provider omitted expires_in, refresh at a bounded cadence.
+			shouldRefresh = time.Since(token.CreatedAt) >= 30*time.Minute
+		} else if time.Now().Add(15 * time.Minute).After(token.ExpiresAt) {
 			shouldRefresh = true
 		}
 
@@ -493,7 +493,12 @@ func (h *OAuthHandler) RefreshAllTokens() {
 		newToken, err := h.refreshAccessToken(token.RefreshToken)
 		if err != nil {
 			log.Printf("Failed to refresh token for %s: %v", username, err)
-			// Token refresh failed, user needs to re-authorize
+			// Keep the grant and retry on the next check. Only a revoked or
+			// expired refresh token requires another browser authorization.
+			continue
+		}
+		if newToken.AccessToken == "" || newToken.ExpiresIn <= 0 {
+			log.Printf("Failed to refresh token for %s: incomplete token response", username)
 			continue
 		}
 
@@ -503,9 +508,7 @@ func (h *OAuthHandler) RefreshAllTokens() {
 			if newToken.RefreshToken != "" {
 				updated.RefreshToken = newToken.RefreshToken
 			}
-			if newToken.ExpiresIn > 0 {
-				updated.ExpiresAt = time.Now().Add(time.Duration(newToken.ExpiresIn) * time.Second)
-			}
+			updated.ExpiresAt = time.Now().Add(time.Duration(newToken.ExpiresIn) * time.Second)
 			updated.CreatedAt = time.Now()
 			return updated
 		}); err != nil {
@@ -515,31 +518,6 @@ func (h *OAuthHandler) RefreshAllTokens() {
 
 		log.Printf("Token refreshed successfully for %s", username)
 	}
-}
-
-// StartBackgroundRefresh starts a background goroutine that periodically refreshes tokens
-// interval is the time between refresh checks (in hours)
-func (h *OAuthHandler) StartBackgroundRefresh(intervalHours int) {
-	if h.store == nil {
-		return
-	}
-
-	// Refresh immediately on startup
-	log.Printf("Starting initial token refresh check...")
-	h.RefreshAllTokens()
-
-	// Start background refresh loop
-	go func() {
-		ticker := time.NewTicker(time.Duration(intervalHours) * time.Hour)
-		defer ticker.Stop()
-
-		for range ticker.C {
-			log.Printf("Running scheduled token refresh check...")
-			h.RefreshAllTokens()
-		}
-	}()
-
-	log.Printf("Background token refresh started (interval: %d hours)", intervalHours)
 }
 
 func min(a, b int) int {

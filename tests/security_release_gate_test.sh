@@ -71,7 +71,7 @@ for text in \
     'Gitea API metadata is canonical' \
     'Static repository content is untrusted' \
     'no Docker socket or SSH key' \
-    'Secret rotation' \
+    'Credentials and control access' \
     'Suspected token compromise' \
     'Forged-hook response' \
     'Disk-exhaustion response' \
@@ -89,7 +89,6 @@ if rg -n -i \
     -e 'write:admin' \
     -e 'GITEA_ACCESS_TOKEN' \
     -e 'WEBHOOK_SECRET[=[:space:]]' \
-    -e 'OAUTH_CLIENT_SECRET=' \
     -e 'WEBHOOK_PUBLIC_URL=http://deployer:8080' \
     -e 'https?://[^[:space:]]*deployer[^[:space:]]*:8080' \
     -e 'https?://(localhost|[^[:space:]]*deployer[^[:space:]]*):8080/(oauth|webhook)' \

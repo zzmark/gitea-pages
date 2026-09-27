@@ -41,6 +41,8 @@ type PagesScanner struct {
 	store       *TokenStore
 	verifier    *GiteaRepositoryVerifier
 	deployments *DeploymentService
+	cancel      context.CancelFunc
+	done        chan struct{}
 }
 
 func NewPagesScanner(config *Config, store *TokenStore, verifier *GiteaRepositoryVerifier, deployments *DeploymentService) *PagesScanner {
@@ -64,12 +66,28 @@ func (s *PagesScanner) Start() bool {
 		return false
 	}
 	s.status = ScanStatus{Running: true, StartedAt: time.Now().UTC()}
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
+	s.cancel = cancel
+	s.done = make(chan struct{})
+	done := s.done
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
+		defer close(done)
 		defer cancel()
 		s.run(ctx)
 	}()
 	return true
+}
+
+func (s *PagesScanner) Stop() {
+	s.mu.Lock()
+	cancel, done := s.cancel, s.done
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if done != nil {
+		<-done
+	}
 }
 
 func (s *PagesScanner) update(update func(*ScanStatus)) {
@@ -87,7 +105,7 @@ func (s *PagesScanner) failure(name, message string) {
 	})
 }
 
-// Authorizations are read from the encrypted user store and the explicitly
+// Authorizations are read from the saved user store and the explicitly
 // registered organization scopes, never inferred from an admin's visibility.
 func (s *PagesScanner) scopes(ctx context.Context) ([]scanScope, error) {
 	users := s.store.List()
@@ -197,7 +215,7 @@ func (s *PagesScanner) ambiguousRoots(ctx context.Context, candidates []scanRepo
 	for _, candidate := range candidates {
 		repo := candidate.repository
 		target, err := NewSiteTarget(s.config.PagesDir, repo.Owner.Username, repo.Name, s.config.Domain)
-		if err == nil && target.IsRoot() && readDeploymentRecord(target.Path(), s.config.TokenEncryptionKey) == nil {
+		if err == nil && target.IsRoot() && readDeploymentRecord(target.Path(), s.config.MetadataSigningKey) == nil {
 			groups[target.Path()] = append(groups[target.Path()], candidate)
 		}
 	}

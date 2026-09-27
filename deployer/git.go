@@ -73,7 +73,7 @@ func NewGitOperations(config *Config) *GitOperations {
 		maxSiteSizeMB: config.MaxSiteSizeMB,
 		cloneTimeout:  config.CloneTimeout,
 		gitBinary:     "git",
-		metadataKey:   append([]byte(nil), config.TokenEncryptionKey...),
+		metadataKey:   append([]byte(nil), config.MetadataSigningKey...),
 	}
 }
 

@@ -35,9 +35,13 @@ supersedes the early prototype design.
 
 ## OAuth and organization hooks
 
-- OAuth grants are encrypted at rest with `TOKEN_ENCRYPTION_KEY_FILE`; session
-  and OAuth client secrets are file-mounted Compose secrets, never ordinary
-  environment values.
+- OAuth grants, the OAuth client secret, hook credentials, and editable runtime
+  settings are stored in plaintext SQLite. A random signing key for sessions
+  and deployment records is created in the same database at first boot.
+- An empty Gitea target is a supported setup state. Optional Gitea environment
+  values seed a fresh database once; the control page saves drafts and applies
+  them only after a manual reload. Operations must restrict the control host to
+  administrators; application-level administrator authentication is not used.
 - Personal and organization hook registration is automatic. The approved
   administrator token pool supplies organization authorization when needed.
 - `ENABLE_ORGANIZATION_HOOKS=true` is the approved default. Set it to `false`
@@ -47,9 +51,8 @@ supersedes the early prototype design.
 
 ## Unsupported legacy credentials
 
-The runtime accepts only encrypted OAuth grants and per-hook credentials.
-Installations using the historical plaintext token database or shared webhook
-secret must start with a fresh Deployer data volume and complete OAuth again.
+The runtime accepts only the new SQLite schema and per-hook credentials.
+Earlier databases must be discarded for a fresh installation and OAuth approval.
 The normal HTTP handler never accepts the retired shared secret.
 
 ## Release requirements

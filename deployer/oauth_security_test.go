@@ -94,7 +94,7 @@ func TestRegistrationSkipsOrganizationEnumerationOnlyWhenDisabled(t *testing.T) 
 		}
 	}))
 	defer gitea.Close()
-	store, err := NewTokenStore(t.TempDir(), bytes.Repeat([]byte("k"), 32))
+	store, err := NewTokenStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewTokenStore: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestRegistrationDeletesNewGiteaHookWhenCredentialStorageFails(t *testing.T)
 		}
 	}))
 	defer gitea.Close()
-	store, err := NewTokenStore(t.TempDir(), bytes.Repeat([]byte("k"), 32))
+	store, err := NewTokenStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewTokenStore: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestRegisterWebhooksCreatesAndStoresDistinctUserAndOrganizationCredentials(
 	}))
 	defer gitea.Close()
 
-	store, err := NewTokenStore(t.TempDir(), bytes.Repeat([]byte("k"), 32))
+	store, err := NewTokenStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewTokenStore: %v", err)
 	}
@@ -254,7 +254,7 @@ func TestRegisterUserWebhookReplacesExistingHookBecauseGiteaCannotPatchSecret(t 
 	}))
 	defer gitea.Close()
 
-	store, err := NewTokenStore(t.TempDir(), bytes.Repeat([]byte("k"), 32))
+	store, err := NewTokenStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewTokenStore: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestRegisteredHookAuthenticatesSignedDelivery(t *testing.T) {
 	}))
 	defer gitea.Close()
 
-	store, err := NewTokenStore(t.TempDir(), bytes.Repeat([]byte("k"), 32))
+	store, err := NewTokenStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewTokenStore: %v", err)
 	}
@@ -381,7 +381,7 @@ func TestOrganizationRegistrationPreservesAuthorizedAdministratorPool(t *testing
 	}))
 	defer gitea.Close()
 
-	store, err := NewTokenStore(t.TempDir(), bytes.Repeat([]byte("k"), 32))
+	store, err := NewTokenStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewTokenStore: %v", err)
 	}
@@ -519,7 +519,7 @@ func TestCallbackConsumesOAuthStateCookie(t *testing.T) {
 		}
 	}))
 	defer gitea.Close()
-	store, err := NewTokenStore(t.TempDir(), bytes.Repeat([]byte("k"), 32))
+	store, err := NewTokenStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewTokenStore: %v", err)
 	}
@@ -574,7 +574,7 @@ func TestCallbackFailsClosedWhenTokenPersistenceFails(t *testing.T) {
 	}))
 	defer gitea.Close()
 
-	store, err := NewTokenStore(t.TempDir(), bytes.Repeat([]byte("k"), 32))
+	store, err := NewTokenStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewTokenStore: %v", err)
 	}
@@ -616,11 +616,14 @@ func TestCallbackFailsClosedWhenTokenPersistenceFails(t *testing.T) {
 func TestStatusEscapesUsernameDomainAndRegistrationError(t *testing.T) {
 	secret := "session-secret"
 	username := "<alice>"
-	store, err := NewTokenStore(t.TempDir(), bytes.Repeat([]byte("k"), 32))
+	store, err := NewTokenStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewTokenStore: %v", err)
 	}
 	defer store.Close()
+	if err := store.Set(username, &UserToken{AccessToken: "test-token", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
 	store.SetRegistrationResult(username, &WebhookRegistrationResult{Message: "<registration error>", Success: false})
 	h := NewWebHandler(nil, store, "<pages.example.com>", secret)
 	req := httptest.NewRequest(http.MethodGet, "/status", nil)
