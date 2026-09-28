@@ -1,6 +1,7 @@
 # Gitea Pages - Actionless Static Site Hosting
 
-[![CI, Security Scan, and Image Publish](https://github.com/kekxv/gitea-pages/actions/workflows/security.yml/badge.svg)](https://github.com/kekxv/gitea-pages/actions/workflows/security.yml)
+[![PR CI and Security Scan](https://github.com/zzmark/gitea-pages/actions/workflows/security.yml/badge.svg)](https://github.com/zzmark/gitea-pages/actions/workflows/security.yml)
+[![Image Publish](https://github.com/zzmark/gitea-pages/actions/workflows/publish.yml/badge.svg)](https://github.com/zzmark/gitea-pages/actions/workflows/publish.yml)
 [![Deployer Image](https://img.shields.io/badge/ghcr.io%2Fkekxv%2Fgitea-pages%2Fdeployer-latest)](https://github.com/kekxv/gitea-pages/pkgs/container/deployer)
 [![Nginx Image](https://img.shields.io/badge/ghcr.io%2Fkekxv%2Fgitea-pages%2Fnginx-latest)](https://github.com/kekxv/gitea-pages/pkgs/container/nginx)
 

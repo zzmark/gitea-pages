@@ -1,28 +1,22 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-    tags: ['v*']
   pull_request:
     branches: [main]
-  workflow_dispatch:
 
 permissions:
   contents: read
-  packages: write
 
 env:
   GO_VERSION: "1.26.7"
   GOVULNCHECK_VERSION: "v1.6.0"
   TRIVY_VERSION: "0.73.0"
-  REGISTRY: ghcr.io
   DEPLOYER_IMAGE: gitea-pages-deployer
   NGINX_IMAGE: gitea-pages-nginx
 
 jobs:
-  verify-and-publish:
-    name: Verify and publish
+  verify:
+    name: Verify
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 
@@ -70,27 +64,3 @@ jobs:
           trivy config --exit-code 1 --severity HIGH,CRITICAL .
           trivy image --exit-code 1 --severity CRITICAL ${DEPLOYER_IMAGE}:${GITHUB_SHA}
           trivy image --exit-code 1 --severity CRITICAL ${NGINX_IMAGE}:${GITHUB_SHA}
-
-      - name: Log in to GitHub Container Registry
-        if: github.event_name == 'push'
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: echo "$GHCR_TOKEN" | docker login "$REGISTRY" --username "${{ github.actor }}" --password-stdin
-
-      - name: Publish multi-architecture images
-        if: github.event_name == 'push'
-        env:
-          IMAGE_PREFIX: ${{ env.REGISTRY }}/${{ github.repository }}
-        run: |
-          docker buildx create --name gitea-pages --use || docker buildx use gitea-pages
-          deployer_tags="-t ${IMAGE_PREFIX}/deployer:${GITHUB_SHA}"
-          nginx_tags="-t ${IMAGE_PREFIX}/nginx:${GITHUB_SHA}"
-          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
-            deployer_tags="$deployer_tags -t ${IMAGE_PREFIX}/deployer:latest"
-            nginx_tags="$nginx_tags -t ${IMAGE_PREFIX}/nginx:latest"
-          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            deployer_tags="$deployer_tags -t ${IMAGE_PREFIX}/deployer:${GITHUB_REF_NAME}"
-            nginx_tags="$nginx_tags -t ${IMAGE_PREFIX}/nginx:${GITHUB_REF_NAME}"
-          fi
-          docker buildx build --platform linux/amd64,linux/arm64 --push $deployer_tags ./deployer
-          docker buildx build --platform linux/amd64,linux/arm64 --build-arg PAGES_DOMAIN=example.com --push $nginx_tags ./nginx

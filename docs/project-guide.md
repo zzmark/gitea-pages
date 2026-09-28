@@ -143,7 +143,8 @@ Go 服务使用标准库 HTTP 服务和 `modernc.org/sqlite`（纯 Go SQLite 驱
 | `examples/quickstart/README.md` | 加固后的部署步骤；不再提供旧式一体化测试栈 |
 | `AI.md` | 修改代码时必须保持的当前架构和安全契约 |
 | `docs/security.md` | 密钥轮换、安全发布与事件响应 |
-| `.github/workflows/security.yml` | CI 验证、安全扫描及多架构镜像发布 |
+| `.github/workflows/security.yml` | 面向 `main` 的 PR 执行 Go、Compose 和安全扫描 |
+| `.github/workflows/publish.yml` | 推送 `main` 或任意 tag 时构建并发布多架构镜像 |
 
 ## 6. 配置与持久化
 
@@ -181,7 +182,7 @@ Go 服务使用标准库 HTTP 服务和 `modernc.org/sqlite`（纯 Go SQLite 驱
 
 ## 8. 如何构建、验证和继续阅读
 
-Go 版本以 CI 固定的 **1.26.7** 为准。在 Linux 或 WSL 中运行文件系统与 Docker 检查：
+Go 版本以 PR 检查工作流固定的 **1.26.7** 为准。PR 运行测试和检测；推送 `main` 或任意 tag 运行镜像发布。`main` 额外发布 `latest`，tag 若不符合 Docker 标签格式，会生成带哈希后缀的安全标签。在 Linux 或 WSL 中运行文件系统与 Docker 检查：
 
 ```bash
 cd deployer
