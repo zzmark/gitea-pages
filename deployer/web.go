@@ -61,18 +61,21 @@ func (h *WebHandler) HandleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hasOAuth := h.oauthConfig != nil && h.oauthConfig.ClientID != ""
+	hasGrant := h.tokenStore != nil && len(h.tokenStore.List()) > 0
 
 	data := struct {
 		Domain   string
 		HasOAuth bool
+		HasGrant bool
 	}{
 		Domain:   h.domain,
 		HasOAuth: hasOAuth,
+		HasGrant: hasGrant,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	tmpl := template.Must(template.New("index").Parse(indexTemplate))
-	tmpl.Execute(w, data)
+	_ = tmpl.Execute(w, data)
 }
 
 // HandleStatus shows the saved backend authorization on the operator-gated host.
@@ -231,10 +234,12 @@ const indexTemplate = `<!DOCTYPE html>
     <div class="container">
         <div class="hero">
             <h1>🚀 Gitea Pages</h1>
-            <p class="subtitle">零配置静态网站托管，推送即部署</p>
+            <p class="subtitle">配置 Gitea 后，持续接收 Webhook 并发布 gh-pages 静态站点</p>
             <div class="hero-buttons">
-                {{if .HasOAuth}}
+                {{if and .HasOAuth (not .HasGrant)}}
                 <a href="/oauth/start" class="btn">授权 Gitea Pages</a>
+                {{end}}
+                {{if .HasGrant}}
                 <a href="/status" class="btn btn-outline">查看状态</a>
                 {{end}}
                 <a href="/sites" class="btn btn-outline">已部署站点</a>
@@ -244,44 +249,44 @@ const indexTemplate = `<!DOCTYPE html>
 
         <div class="features">
             <div class="feature">
-                <div class="feature-icon">⚡</div>
-                <h3>零配置</h3>
-                <p>推送代码到 gh-pages 分支，自动部署完成，无需任何手动操作</p>
+                <div class="feature-icon">⚙️</div>
+                <h3>页面管理运行配置</h3>
+                <p>首次启动可先打开配置页填写 Gitea 参数；保存草稿并手动重载后生效。</p>
             </div>
             <div class="feature">
                 <div class="feature-icon">🔒</div>
-                <h3>安全可靠</h3>
-                <p>支持私有仓库，OAuth2 授权机制，容器化隔离运行</p>
+                <h3>后端保存授权</h3>
+                <p>首次授权后由后端保存令牌并定时续期，日常部署不依赖浏览器保持登录。</p>
             </div>
             <div class="feature">
-                <div class="feature-icon">🌐</div>
-                <h3>泛域名路由</h3>
-                <p>支持 username.{{.Domain}} 和子目录两种访问方式</p>
+                <div class="feature-icon">📋</div>
+                <h3>站点与版本清单</h3>
+                <p>查看已部署 commit、部署时间和该 commit 的提交时间，核对站点当前版本。</p>
             </div>
         </div>
 
         <div class="card">
-            <h2>📋 使用步骤</h2>
+            <h2>📋 使用流程</h2>
             <ol class="steps">
                 <li>
                     <span class="step-number">1</span>
                     <div class="step-content">
-                        <strong>授权 Gitea Pages</strong>
-                        <p>点击上方按钮授权，自动为您的所有仓库注册 Webhook</p>
+                        <strong>配置 Gitea 目标</strong>
+                        <p>在运行配置页填写 API 地址及 OAuth 客户端信息，保存后手动重载。入口访问限制由运维配置。</p>
                     </div>
                 </li>
                 <li>
                     <span class="step-number">2</span>
                     <div class="step-content">
-                        <strong>创建仓库并添加 gh-pages 分支</strong>
-                        <p>仓库名为 username.{{.Domain}} 则为根目录站点，其他为子目录站点</p>
+                        <strong>完成一次 OAuth 授权</strong>
+                        <p>后端保存授权并自动续期，同时注册相应范围的 Webhook；已有授权时无需重复操作。</p>
                     </div>
                 </li>
                 <li>
                     <span class="step-number">3</span>
                     <div class="step-content">
-                        <strong>推送代码，自动部署完成！</strong>
-                        <p>推送后自动触发部署，删除分支则自动移除站点</p>
+                        <strong>推送并查看部署</strong>
+                        <p>向仓库的 gh-pages 分支推送静态文件，Webhook 触发发布；在已部署站点页查看版本和时间。</p>
                     </div>
                 </li>
             </ol>
@@ -304,15 +309,14 @@ const indexTemplate = `<!DOCTYPE html>
         </div>
 
         <div class="card">
-            <h2>💡 示例</h2>
+            <h2>💡 推送示例</h2>
             <div class="info-box">
-                <code># 创建根目录站点
-git init myname.{{.Domain}}
+                <code># 从 Gitea 克隆根目录站点仓库
+git clone &lt;Gitea 仓库 HTTPS 地址&gt; myname.{{.Domain}}
 cd myname.{{.Domain}}
-git checkout -b gh-pages
+git switch --orphan gh-pages
 echo "&lt;html&gt;&lt;body&gt;Hello!&lt;/body&gt;&lt;/html&gt;" > index.html
 git add . && git commit -m "init"
-git remote add origin https://gitea.example.com/myname/myname.{{.Domain}}.git
 git push -u origin gh-pages
 
 # 访问 https://myname.{{.Domain}}/</code>
@@ -320,7 +324,7 @@ git push -u origin gh-pages
         </div>
 
         <div class="footer">
-            <p>Gitea Pages · 零配置静态网站托管 · <a href="/status">系统状态</a></p>
+            <p>Gitea Pages · 后端持续授权 · <a href="/status">系统状态</a></p>
         </div>
     </div>
 </body>

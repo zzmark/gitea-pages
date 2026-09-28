@@ -14,19 +14,21 @@ func TestHandleSites(t *testing.T) {
 	key := bytes.Repeat([]byte{9}, 32)
 	secret := "session-secret-for-sites-tests"
 	for _, tc := range []struct {
-		name       string
-		query      string
-		noSession  bool
-		expired    bool
-		apiFailure bool
-		empty      bool
-		wantStatus int
-		want       []string
-		unwanted   []string
+		name          string
+		query         string
+		noSession     bool
+		expired       bool
+		apiFailure    bool
+		commitFailure bool
+		empty         bool
+		wantStatus    int
+		want          []string
+		unwanted      []string
 	}{
 		{name: "部署清单-无浏览器会话沿用后端授权", noSession: true, wantStatus: 200, want: []string{"alice/blog", "team/docs"}, unwanted: []string{"bob/private"}},
 		{name: "部署清单-过期令牌不能读取清单", expired: true, wantStatus: 200, want: []string{"尚无可用的后端授权"}, unwanted: []string{"alice/blog", "team/docs"}},
-		{name: "部署清单-展示本人和有权限组织并隐藏其他仓库", wantStatus: 200, want: []string{"alice/blog", "team/docs", testDeploymentRevision[:12], "2026-09-12 03:04:05 UTC", "https://alice.pages.test/blog/", "未记录"}, unwanted: []string{"bob/private", "alice/recreated", "oauth-test-token"}},
+		{name: "部署清单-展示版本与两种时间并隐藏其他仓库", wantStatus: 200, want: []string{"alice/blog", "team/docs", testDeploymentRevision[:12], "部署时间", "Commit 更新时间", "2026-09-12 03:04:05 UTC", "2026-09-11 02:03:04 UTC", "https://alice.pages.test/blog/", "未记录"}, unwanted: []string{"bob/private", "alice/recreated", "oauth-test-token"}},
+		{name: "部署清单-commit 查询失败仍显示已部署站点", commitFailure: true, wantStatus: 200, want: []string{"alice/blog", "2026-09-12 03:04:05 UTC", "未获取"}},
 		{name: "部署清单-搜索仓库", query: "docs", wantStatus: 200, want: []string{"team/docs", "匹配 1 个"}, unwanted: []string{"alice/blog", "bob/private"}},
 		{name: "部署清单-搜索版本", query: testDeploymentRevision[:12], wantStatus: 200, want: []string{"alice/blog", "匹配 1 个"}, unwanted: []string{"team/docs"}},
 		{name: "部署清单-搜索无结果", query: "missing", wantStatus: 200, want: []string{"没有匹配的站点"}, unwanted: []string{"alice/blog"}},
@@ -60,6 +62,17 @@ func TestHandleSites(t *testing.T) {
 				}
 				if tc.apiFailure {
 					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				if strings.Contains(r.URL.Path, "/git/commits/") {
+					if !strings.HasSuffix(r.URL.Path, "/"+testDeploymentRevision) {
+						t.Errorf("commit lookup path = %q", r.URL.Path)
+					}
+					if tc.commitFailure {
+						w.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+					_ = json.NewEncoder(w).Encode(map[string]any{"sha": testDeploymentRevision, "commit": map[string]any{"committer": map[string]string{"date": "2026-09-11T02:03:04Z"}}})
 					return
 				}
 				parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/repos/"), "/")
